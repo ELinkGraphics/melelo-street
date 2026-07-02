@@ -755,7 +755,7 @@ export default function App() {
               {!showDetailsState && (
                 <motion.div
                   initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 50 }} transition={{ duration: 0.6 }}
-                  className="absolute bottom-[76px] inset-x-0 h-16 md:right-0 md:top-0 md:bottom-0 md:inset-x-auto md:translate-y-0 md:h-auto md:w-[14%] flex items-center justify-center pointer-events-none z-[50] md:z-40">
+                  className="absolute bottom-0 inset-x-0 h-16 md:right-0 md:top-0 md:bottom-0 md:inset-x-auto md:translate-y-0 md:h-auto md:w-[14%] flex items-center justify-center pointer-events-none z-[82] md:z-40">
 
                   {/* Active Item Highlight Panel — orange selection backdrop (desktop vertical band) */}
                   <div
@@ -838,7 +838,7 @@ export default function App() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-            className="fixed bottom-0 left-0 right-0 z-[80] pointer-events-auto md:hidden"
+            className="fixed bottom-[64px] left-0 right-0 z-[80] pointer-events-auto md:hidden"
           >
             {/* Solid black bottom with feathered top edge */}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black to-transparent pointer-events-none" />
