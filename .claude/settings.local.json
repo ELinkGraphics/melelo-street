@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(xargs grep -l \"reducedMotion\")",
+      "Bash(grep -iA12 \"transform\\\\|positionalKeys\\\\|skip\")",
+      "Bash(awk '{print $5, $9}')"
+    ]
+  }
+}
