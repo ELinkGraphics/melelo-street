@@ -248,16 +248,16 @@ function CartView({ c }: { c: Commerce }) {
                   <button onClick={() => c.removeItem(item.uid)} aria-label="Remove" className="text-zinc-500 hover:text-red-400 transition-colors">
                     <Trash2 size={16} />
                   </button>
-                  <div className="flex items-center gap-3 border border-white/15 rounded-full px-2 py-1">
-                    <button onClick={() => c.updateQty(item.uid, -1)} aria-label="Decrease" className="text-zinc-300 hover:text-white"><Minus size={14} /></button>
-                    <span className="w-5 text-center text-sm font-medium">{item.qty}</span>
-                    <button onClick={() => c.updateQty(item.uid, 1)} aria-label="Increase" className="text-zinc-300 hover:text-white"><Plus size={14} /></button>
+                  <div className="flex items-center gap-1 border border-white/15 rounded-full p-1">
+                    <button onClick={() => c.updateQty(item.uid, -1)} aria-label="Decrease" className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-300 hover:bg-white/10 hover:text-white transition-colors"><Minus size={16} /></button>
+                    <span className="w-6 text-center text-sm font-semibold">{item.qty}</span>
+                    <button onClick={() => c.updateQty(item.uid, 1)} aria-label="Increase" className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-300 hover:bg-white/10 hover:text-white transition-colors"><Plus size={16} /></button>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          <div className="border-t border-white/10 p-6 space-y-4 shrink-0">
+          <div className="border-t border-white/10 px-6 pt-6 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] space-y-4 shrink-0">
             <div className="flex justify-between text-sm text-zinc-400">
               <span>Subtotal</span><span className="text-white font-semibold">{fmtMoney(c.cartTotal)}</span>
             </div>
@@ -300,7 +300,8 @@ function CheckoutView({ c }: { c: Commerce }) {
     }, 1500);
   };
 
-  const field = 'w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
+  // text-base (16px) is required on iOS — smaller fonts trigger auto-zoom on focus.
+  const field = 'w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-base outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
 
   return (
     <motion.div key="checkout" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
@@ -370,7 +371,7 @@ function CheckoutView({ c }: { c: Commerce }) {
           )}
         </section>
       </div>
-      <div className="border-t border-white/10 p-6 space-y-3 shrink-0">
+      <div className="border-t border-white/10 px-6 pt-6 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] space-y-3 shrink-0">
         <div className="flex justify-between text-sm">
           <span className="text-zinc-400">Total</span>
           <span className="text-xl font-bold">{fmtMoney(c.cartTotal)}</span>
@@ -414,7 +415,7 @@ function SuccessView({ c }: { c: Commerce }) {
           </div>
         )}
       </div>
-      <div className="border-t border-white/10 p-6 space-y-3 shrink-0">
+      <div className="border-t border-white/10 px-6 pt-6 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] space-y-3 shrink-0">
         <button onClick={() => order && c.openTracking(order.id)} className="w-full bg-white text-black py-4 rounded-full font-bold uppercase tracking-wide hover:bg-orange-500 hover:text-white transition-colors">
           Track order
         </button>
@@ -475,7 +476,7 @@ function AccountView({ c }: { c: Commerce }) {
           ))}
         </div>
       )}
-      <div className="border-t border-white/10 p-4 shrink-0">
+      <div className="border-t border-white/10 px-4 pt-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] shrink-0">
         <button onClick={c.openAdmin}
           className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-zinc-300 hover:text-white transition-colors py-2">
           <ShieldCheck size={16} /> Admin · approvals

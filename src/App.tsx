@@ -408,7 +408,7 @@ export default function App() {
       <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent pointer-events-none z-0"></div>
 
       {/* Navigation - Fixed at top of hero */}
-      <nav className="fixed top-0 left-0 right-0 z-50 w-full flex items-center justify-between px-6 py-4 md:px-10 md:py-6">
+      <nav className={`fixed top-0 left-0 right-0 z-50 w-full flex items-center justify-between px-6 py-4 md:px-10 md:py-6 transition-colors duration-500 ${activeSectionState === 'collection' ? 'bg-gradient-to-b from-black/70 via-black/25 to-transparent' : ''}`}>
 
         {/* Left Side: Logo + Nav Links */}
         <div className="flex items-center gap-4 md:gap-16">
@@ -426,7 +426,7 @@ export default function App() {
           </div>
 
           <div className="hidden lg:flex items-center gap-8">
-            <a href="#" className="text-sm font-medium tracking-widest text-white hover:text-orange-300 transition-colors uppercase">Collection</a>
+            <a href="#" onClick={(e: React.MouseEvent) => { e.preventDefault(); setActiveSection('collection'); setGalleryIndex(0); }} className="text-sm font-medium tracking-widest text-white hover:text-orange-300 transition-colors uppercase">Collection</a>
             <a href="#" className="text-sm font-medium tracking-widest text-zinc-400 hover:text-orange-300 transition-colors uppercase">Archive</a>
             <a href="#" className="text-sm font-medium tracking-widest text-zinc-400 hover:text-orange-300 transition-colors uppercase">Editorial</a>
             <button onClick={() => setAboutOpenWrapped(true)} className="text-sm font-medium tracking-widest text-zinc-400 hover:text-orange-300 transition-colors uppercase cursor-pointer">About</button>
@@ -435,7 +435,7 @@ export default function App() {
 
         {/* Right Side: Button + Icons */}
         <div className="flex items-center gap-5 md:gap-7 pointer-events-auto">
-          <button className="hidden md:block bg-[#EFEFEF] text-black px-6 py-2 md:px-7 md:py-2.5 rounded-full text-[13px] font-semibold hover:bg-white transition-colors">
+          <button onClick={() => { setActiveSection('collection'); setGalleryIndex(0); }} className="hidden md:block bg-[#EFEFEF] text-black px-6 py-2 md:px-7 md:py-2.5 rounded-full text-[13px] font-semibold hover:bg-white transition-colors">
             Shop Now
           </button>
 
@@ -492,7 +492,7 @@ export default function App() {
                   <a
                     key={link}
                     href="#"
-                    onClick={() => setMenuOpen(false)}
+                    onClick={(e: React.MouseEvent) => { e.preventDefault(); setMenuOpen(false); if (link === 'Collection') { setActiveSection('collection'); setGalleryIndex(0); } }}
                     className={`text-2xl font-medium tracking-wide uppercase transition-colors ${i === 0 ? 'text-white' : 'text-zinc-400'} hover:text-orange-300`}
                   >
                     {link}
@@ -521,7 +521,7 @@ export default function App() {
                 </button>
               </div>
 
-              <button className="mt-auto bg-[#EFEFEF] text-black px-6 py-3 rounded-full text-sm font-semibold hover:bg-white transition-colors">
+              <button onClick={() => { setMenuOpen(false); setActiveSection('collection'); setGalleryIndex(0); }} className="mt-auto bg-[#EFEFEF] text-black px-6 py-3 rounded-full text-sm font-semibold hover:bg-white transition-colors">
                 Shop Now
               </button>
             </motion.div>
@@ -554,6 +554,23 @@ export default function App() {
             <div className="absolute inset-0 flex items-center justify-center z-10 md:static md:w-1/2 md:h-full md:justify-end md:items-end">
               <img src="/models/hero_model.png" className="w-full h-full object-contain object-center drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)] scale-[3.2] translate-y-6 md:object-bottom md:origin-bottom md:scale-[2.5] md:-translate-x-24 md:translate-y-12" />
             </div>
+
+            {/* Mobile: tap or swipe up to enter the collection */}
+            <motion.button
+              onClick={() => { setActiveSection('collection'); setGalleryIndex(0); }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6, duration: 0.6 }}
+              aria-label="Explore collection"
+              className="md:hidden absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex flex-col items-center gap-1.5 text-white/85 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[0.25em]">Explore collection</span>
+              <motion.span
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                className="text-orange-400"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+              </motion.span>
+            </motion.button>
           </motion.div>
         )}
 
@@ -889,27 +906,59 @@ export default function App() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: isMobile ? '100%' : 100 }}
             transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
-            className="absolute right-0 top-0 bottom-0 w-full md:w-[45%] bg-black/80 md:bg-black/60 backdrop-blur-md z-[60] px-8 py-20 md:px-16 md:py-24 flex flex-col pointer-events-auto border-l border-white/10 overflow-y-auto hide-scrollbar will-change-transform transform-gpu"
+            className="absolute right-0 top-0 bottom-0 w-full md:w-[45%] bg-zinc-950/95 md:bg-black/60 backdrop-blur-md z-[60] flex flex-col pointer-events-auto border-l border-white/10 will-change-transform transform-gpu"
           >
+            {/* Close — floating circular control, always reachable */}
             <button
               onClick={() => setShowDetails(false)}
-              className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors flex items-center gap-2 text-sm font-medium z-[70] cursor-pointer"
+              aria-label="Close details"
+              className="absolute top-5 right-5 md:top-8 md:right-8 w-10 h-10 rounded-full bg-white/10 border border-white/15 backdrop-blur-md text-white/70 hover:text-white hover:bg-white/20 transition-colors flex items-center justify-center z-[80] cursor-pointer"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-              Close
             </button>
 
-            {/* Garment preview — recolors with the selected swatch so color changes are visible in the panel */}
-            <div className="w-full h-36 md:h-52 mb-6 flex items-center justify-center">
-              <Recolor
-                src={design.item}
-                coloredSrc={color.item}
-                hex={color.hex}
-                alt={design.name}
-                className="h-full flex items-center justify-center"
-                imgClassName="h-full w-auto object-contain drop-shadow-2xl"
-              />
-            </div>
+            {/* Scrollable content — the sticky buy bar below stays pinned */}
+            <div className="flex-1 overflow-y-auto hide-scrollbar px-6 pt-16 pb-4 md:px-16 md:pt-24">
+
+              {/* Garment preview — tinted glow platform + crossfade on color change */}
+              <div className="relative w-full h-56 md:h-52 mb-5 flex items-center justify-center">
+                <div aria-hidden className="absolute bottom-3 left-1/2 -translate-x-1/2 w-52 h-14 rounded-[50%] blur-2xl opacity-50" style={{ background: color.hex }} />
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${design.id}-${color.name}`}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.03 }}
+                    transition={{ duration: 0.35 }}
+                    className="relative z-10 h-full flex items-center justify-center"
+                  >
+                    <Recolor
+                      src={design.item}
+                      coloredSrc={color.item}
+                      hex={color.hex}
+                      alt={design.name}
+                      className="h-full flex items-center justify-center"
+                      imgClassName="h-full w-auto object-contain drop-shadow-2xl"
+                    />
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              {/* Bestseller badge + social proof */}
+              <div className="flex items-center justify-between mb-4">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/15 border border-orange-500/30 rounded-full px-3 py-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+                  Bestseller
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-0.5 text-orange-400">
+                    {[0, 1, 2, 3, 4].map(s => (
+                      <svg key={s} xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01z"/></svg>
+                    ))}
+                  </div>
+                  <span className="text-xs text-zinc-400">4.9 (128)</span>
+                </div>
+              </div>
 
             <h4 className="text-orange-400 text-sm tracking-widest uppercase mb-2 font-semibold">
               {category.name} · Look {String(activeDesignIndex + 1).padStart(2, '0')}
@@ -917,9 +966,25 @@ export default function App() {
             <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter mb-6">
               {design.name}
             </h2>
-            <p className="text-zinc-300 text-lg mb-8 leading-relaxed">
+            <p className="text-zinc-300 text-base md:text-lg mb-6 leading-relaxed">
               Crafted for the modern explorer. Featuring advanced fabric technology, providing exceptional breathability and comfort without compromising on style.
             </p>
+
+            {/* Trust signals — reduce hesitation before buying */}
+            <div className="grid grid-cols-3 gap-2 mb-7">
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Free shipping</span>
+              </div>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">30-day returns</span>
+              </div>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Secure checkout</span>
+              </div>
+            </div>
 
             <div className="space-y-6">
               <div>
@@ -940,15 +1005,18 @@ export default function App() {
               </div>
 
               <div>
-                <h5 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-3">Select Size</h5>
-                <div className="flex gap-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h5 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Select Size</h5>
+                  <span className="text-xs text-zinc-500">True to size · model wears M</span>
+                </div>
+                <div className="flex gap-2.5">
                   {['S', 'M', 'L', 'XL'].map(size => (
                     <button
                       key={size}
                       onClick={() => setDetailSize(size)}
-                      className={`w-12 h-12 rounded-full border flex items-center justify-center text-sm font-semibold transition-colors ${detailSize === size
-                        ? 'border-orange-500 bg-orange-500 text-black'
-                        : 'border-zinc-600 hover:border-orange-500 hover:text-orange-500'}`}
+                      className={`flex-1 h-12 rounded-xl border flex items-center justify-center text-sm font-bold transition-all ${detailSize === size
+                        ? 'border-orange-500 bg-orange-500 text-black shadow-[0_4px_16px_rgba(234,138,40,0.35)]'
+                        : 'border-zinc-600 text-zinc-300 hover:border-orange-500 hover:text-orange-400'}`}
                     >
                       {size}
                     </button>
@@ -958,55 +1026,70 @@ export default function App() {
 
               <div>
                 <h5 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-3">Quantity</h5>
-                <div className="flex items-center gap-4 border border-zinc-600 rounded-full w-max px-4 py-2">
-                  <button onClick={() => setDetailQty(q => Math.max(1, q - 1))} className="text-zinc-400 hover:text-white">-</button>
-                  <span className="w-8 text-center font-medium">{detailQty}</span>
-                  <button onClick={() => setDetailQty(q => Math.min(9, q + 1))} className="text-zinc-400 hover:text-white">+</button>
+                <div className="flex items-center gap-1 border border-zinc-600 rounded-full w-max p-1">
+                  <button onClick={() => setDetailQty(q => Math.max(1, q - 1))} aria-label="Decrease quantity" className="w-10 h-10 rounded-full flex items-center justify-center text-xl text-zinc-300 hover:bg-white/10 hover:text-white transition-colors">−</button>
+                  <span className="w-10 text-center font-semibold text-lg">{detailQty}</span>
+                  <button onClick={() => setDetailQty(q => Math.min(9, q + 1))} aria-label="Increase quantity" className="w-10 h-10 rounded-full flex items-center justify-center text-xl text-zinc-300 hover:bg-white/10 hover:text-white transition-colors">+</button>
                 </div>
               </div>
             </div>
+            </div>
 
-            <div className="mt-10 pt-8 border-t border-white/10 flex flex-col gap-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-3xl font-bold">{`$${(UNIT_PRICE * detailQty).toFixed(2)}`}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      commerce.addToCart({
-                        designId: design.id,
-                        name: `${design.name} ${category.name}`,
-                        image: itemSrc,
-                        size: detailSize,
-                        color: color.name,
-                        price: UNIT_PRICE,
-                        qty: detailQty,
-                      });
-                      setDetailQty(1);
-                      setShowDetails(false);
-                      commerce.openCart();
-                    }}
-                    className="bg-white/10 border border-white/20 text-white px-6 py-4 rounded-full font-bold uppercase tracking-wide hover:bg-white hover:text-black transition-colors">
-                    Add to Cart
-                  </button>
-                  <button
-                    onClick={() => {
-                      commerce.addToCart({
-                        designId: design.id,
-                        name: `${design.name} ${category.name}`,
-                        image: itemSrc,
-                        size: detailSize,
-                        color: color.name,
-                        price: UNIT_PRICE,
-                        qty: detailQty,
-                      });
-                      setDetailQty(1);
-                      setShowDetails(false);
-                      commerce.setView('checkout');
-                    }}
-                    className="bg-orange-500 text-white px-6 py-4 rounded-full font-bold uppercase tracking-wide hover:bg-orange-400 transition-colors shadow-[0_4px_20px_rgba(234,138,40,0.4)]">
-                    Buy Now
-                  </button>
+            {/* Sticky purchase bar — always visible so buying is one tap away */}
+            <div className="shrink-0 border-t border-white/10 bg-black/85 backdrop-blur-xl px-6 pt-4 md:px-16 md:pb-8" style={{ paddingBottom: 'calc(1.1rem + env(safe-area-inset-bottom))' }}>
+              <div className="flex items-end justify-between mb-3">
+                <div>
+                  <div className="text-2xl md:text-3xl font-bold leading-none">{`$${(UNIT_PRICE * detailQty).toFixed(2)}`}</div>
+                  <div className="text-[11px] text-zinc-400 mt-1">{detailQty} × ${UNIT_PRICE.toFixed(2)} · {color.name} / {detailSize}</div>
                 </div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  In stock
+                </div>
+              </div>
+              <div className="flex gap-2.5">
+                <button
+                  onClick={() => {
+                    commerce.addToCart({
+                      designId: design.id,
+                      name: `${design.name} ${category.name}`,
+                      image: itemSrc,
+                      size: detailSize,
+                      color: color.name,
+                      price: UNIT_PRICE,
+                      qty: detailQty,
+                    });
+                    setDetailQty(1);
+                    setShowDetails(false);
+                    commerce.openCart();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 bg-white/10 border border-white/20 text-white py-4 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-white hover:text-black transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                  Add
+                </button>
+                <button
+                  onClick={() => {
+                    commerce.addToCart({
+                      designId: design.id,
+                      name: `${design.name} ${category.name}`,
+                      image: itemSrc,
+                      size: detailSize,
+                      color: color.name,
+                      price: UNIT_PRICE,
+                      qty: detailQty,
+                    });
+                    setDetailQty(1);
+                    setShowDetails(false);
+                    commerce.setView('checkout');
+                  }}
+                  className="flex-[1.6] flex items-center justify-center gap-2 bg-orange-500 text-white py-4 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-orange-400 transition-colors shadow-[0_6px_24px_rgba(234,138,40,0.5)]">
+                  Buy Now
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </button>
+              </div>
+              <div className="flex items-center justify-center gap-1.5 mt-3 text-[11px] text-zinc-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Secure checkout · encrypted payment
               </div>
             </div>
           </motion.div>
