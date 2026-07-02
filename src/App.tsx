@@ -577,7 +577,7 @@ export default function App() {
               <motion.div
                 animate={{ x: !isMobile && showDetailsState ? '-5%' : isMobile ? '0%' : '20%', scale: isMobile ? 1.15 : (showDetailsState ? 2.1 : 1.95), y: isMobile ? '0%' : '-13%' }}
                 transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
-                className="absolute top-0 h-full origin-top left-0 w-full md:left-[10%] md:w-[65%] will-change-transform transform-gpu"
+                className="absolute top-0 h-full origin-bottom md:origin-top left-0 w-full md:left-[10%] md:w-[65%] will-change-transform transform-gpu"
               >
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.div
@@ -589,7 +589,7 @@ export default function App() {
                     className="absolute inset-0"
                   >
                     {/* Center is always the model (-model) image of the active design + color. */}
-                    <SlotImage slot={centerSlot} imgClassName="w-full h-full object-contain object-top drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]" maskPosition="center top" />
+                    <SlotImage slot={centerSlot} imgClassName="w-full h-full object-contain object-bottom md:object-top drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]" maskPosition="center top" />
                   </motion.div>
                 </AnimatePresence>
               </motion.div>
@@ -691,6 +691,27 @@ export default function App() {
                       ))}
                     </div>
 
+                    {/* Mobile category pills — small, no background, sits above the look info */}
+                    <div className="flex md:hidden items-center gap-4 mb-4 pointer-events-auto">
+                      {CATEGORIES.map((cat, i) => (
+                        <button
+                          key={cat.id}
+                          onClick={() => selectCategory(i)}
+                          className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors ${i === categoryIndex ? 'text-orange-400' : 'text-white/50 hover:text-white'}`}
+                        >
+                          <span className="shrink-0">
+                            {cat.id === 'tees' && (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>
+                            )}
+                            {cat.id === 'hoodies' && (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C9 2 6 4 6 7v4H3l1 11h16l1-11h-3V7c0-3-3-5-6-5z"/><path d="M9 2v6"/><path d="M15 2v6"/><circle cx="12" cy="14" r="2"/></svg>
+                            )}
+                          </span>
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+
                     {/* Dynamic Info for the active design (derived from the gallery slot) */}
                     <div className="md:mt-8 pointer-events-auto">
                       <AnimatePresence mode="wait">
@@ -755,7 +776,25 @@ export default function App() {
               {!showDetailsState && (
                 <motion.div
                   initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 50 }} transition={{ duration: 0.6 }}
-                  className="absolute bottom-0 inset-x-0 h-16 md:right-0 md:top-0 md:bottom-0 md:inset-x-auto md:translate-y-0 md:h-auto md:w-[14%] flex items-center justify-center pointer-events-none z-[82] md:z-40">
+                  className="absolute bottom-0 inset-x-0 h-24 md:right-0 md:top-0 md:bottom-0 md:inset-x-auto md:translate-y-0 md:h-auto md:w-[14%] flex items-center justify-center pointer-events-none z-[82] md:z-40">
+
+                  {/* Mobile: solid black bottom with feathered top edge (takes over the old category bar's look) */}
+                  <div className="md:hidden absolute inset-0 bg-gradient-to-t from-black via-black to-transparent pointer-events-none" />
+
+                  {/* Mobile: glass dock platform — the active item is always centered on it */}
+                  <div className="md:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[78%] max-w-[320px] h-[72px] rounded-[22px] bg-white/[0.06] border border-white/10 backdrop-blur-xl shadow-[0_12px_34px_rgba(0,0,0,0.55)] pointer-events-none overflow-hidden">
+                    <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-orange-400/70 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-orange-500/[0.07] to-transparent" />
+                  </div>
+
+                  {/* Mobile: soft orange spotlight behind the centered active mockup */}
+                  <div
+                    className="md:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full pointer-events-none"
+                    style={{ background: 'radial-gradient(circle, rgba(234,138,40,0.34) 0%, rgba(234,138,40,0) 70%)' }}
+                  />
+
+                  {/* Mobile: vibrant active highlight tile framing the centered mockup */}
+                  <div className="md:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[66px] h-[66px] rounded-2xl pointer-events-none bg-gradient-to-br from-orange-500/35 via-orange-500/10 to-transparent ring-1 ring-orange-400/50 shadow-[0_0_28px_rgba(234,138,40,0.45)]" />
 
                   {/* Active Item Highlight Panel — orange selection backdrop (desktop vertical band) */}
                   <div
@@ -768,9 +807,6 @@ export default function App() {
                     }}
                   />
 
-                  {/* Active Item Highlight — mobile glow (below model, above category bar) */}
-                  <div className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 w-16 h-16 rounded-2xl z-20 pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(200,90,23,0.28) 0%, rgba(200,90,23,0) 70%)' }} />
-
                   {/* Gallery — one MOCKUP per design (the non-"-model" flat), in the current color only */}
                   <div className="relative w-full h-full flex items-center justify-center pointer-events-auto overflow-hidden">
                     {designsList.map((d, index) => {
@@ -781,11 +817,11 @@ export default function App() {
 
                       // Main axis: horizontal strip on mobile, vertical column on desktop.
                       const mainAxis = isMobile
-                        ? { x: distance * 56, y: 0 }
+                        ? { x: distance * 62, y: 0 }
                         : { x: 0, y: distance * 200 };
 
                       const itemScale = isMobile
-                        ? (isActive ? 1 : 0.75)
+                        ? (isActive ? 1.08 : 0.72)
                         : (isActive ? 1 : Math.max(0.5, 0.65 - (absDistance - 1) * 0.15));
                       const itemOpacity = isMobile
                         ? (isActive ? 1 : Math.max(0.4, 0.65 - (absDistance - 1) * 0.2))
@@ -819,44 +855,27 @@ export default function App() {
                       );
                     })}
                   </div>
+
+                  {/* Mobile: tappable page dots showing the active look */}
+                  <div className="md:hidden absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 pointer-events-auto z-30">
+                    {designsList.map((d, index) => {
+                      const on = index === designAt;
+                      return (
+                        <button
+                          key={d.id}
+                          onClick={() => setGallery(index)}
+                          aria-label={`View ${d.name}`}
+                          className={`rounded-full transition-all duration-300 ${on ? 'w-5 h-1.5 bg-orange-400 shadow-[0_0_8px_rgba(234,138,40,0.7)]' : 'w-1.5 h-1.5 bg-white/30 hover:bg-white/60'}`}
+                        />
+                      );
+                    })}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
 
 
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Sticky Mobile Bottom Category Bar — category switcher at bottom */}
-      <AnimatePresence>
-        {isMobile && activeSectionState === 'collection' && !showDetailsState && (
-          <motion.div
-            key="mobile-bottom-category"
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-            className="fixed bottom-[64px] left-0 right-0 z-[80] pointer-events-auto md:hidden"
-          >
-            {/* Solid black bottom with feathered top edge */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black to-transparent pointer-events-none" />
-            <div className="relative px-5 pb-6 pt-4 flex items-center justify-center gap-3">
-              {CATEGORIES.map((cat, i) => (
-                <button
-                  key={cat.id}
-                  onClick={() => selectCategory(i)}
-                  className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${
-                    i === categoryIndex
-                      ? 'bg-orange-500 border-orange-500 text-black'
-                      : 'bg-white/10 border-white/20 text-white backdrop-blur-md hover:border-white/40'
-                  }`}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
