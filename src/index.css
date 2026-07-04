@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
-@import url('https://api.fontshare.com/v2/css?f[]=clash-display@200,300,400,500,600,700&display=swap');
+/* Clash Display is only used at font-medium (500) — don't load 6 weights. */
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@500&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;800&display=swap');
 
 @import "tailwindcss";

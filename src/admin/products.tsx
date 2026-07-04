@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Loader2, X, Save, Package, Upload, Star } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
+import { compressImage, IMMUTABLE_CACHE } from '../lib/imageUpload';
 import { PageScaffold, EmptyState } from './ui';
 
 const SIZES = ['S', 'M', 'L', 'XL'];
@@ -123,11 +124,12 @@ async function deleteProduct(id: string): Promise<void> {
 }
 
 // Upload one image to Storage and (re)point the product_images row for that slot.
+// Compressed to WebP client-side; timestamped filenames make it safe to cache forever.
 async function uploadImage(file: File, productId: string, variantId: string, view: 'model' | 'product'): Promise<string> {
   const sb = requireSupabase();
-  const ext = file.name.split('.').pop() || 'png';
+  const { blob, ext, contentType } = await compressImage(file, 1600, 0.85);
   const path = `${productId}/${variantId}-${view}-${Date.now()}.${ext}`;
-  const { error: upErr } = await sb.storage.from('product-images').upload(path, file, { upsert: true, cacheControl: '3600' });
+  const { error: upErr } = await sb.storage.from('product-images').upload(path, blob, { upsert: true, cacheControl: IMMUTABLE_CACHE, contentType });
   if (upErr) throw upErr;
   const url = sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
   await sb.from('product_images').delete().eq('product_id', productId).eq('variant_id', variantId).eq('view', view);

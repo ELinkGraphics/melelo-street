@@ -79,7 +79,7 @@ function AuthShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-[100dvh] bg-zinc-950 text-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <img src="/logo.png" alt="Melelo" className="h-7 object-contain" />
+          <img src="/logo.webp" alt="Melelo" className="h-7 object-contain" />
           <span className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400">Admin</span>
         </div>
         {children}

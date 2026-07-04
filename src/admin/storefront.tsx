@@ -4,6 +4,7 @@ import {
   Image as ImageIcon, Monitor, Smartphone,
 } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
+import { compressImage, IMMUTABLE_CACHE } from '../lib/imageUpload';
 import { PageScaffold } from './ui';
 
 type Xform = { scale: number; x: number; y: number };
@@ -13,7 +14,7 @@ const NO_XFORM: Xform = { scale: 1, x: 0, y: 0 };
 
 // Mirrors the storefront's built-in defaults (App.tsx hero section).
 const DEFAULTS = {
-  image: '/models/hero_model.png',
+  image: '/models/hero_model.webp',
   title1: 'Melelo',
   title2: 'Brands',
   tagline: 'Chaotic authenticity.',
@@ -91,9 +92,9 @@ export function StorefrontPage() {
     setUploading(true); setErr(null);
     try {
       const sb = requireSupabase();
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+      const { blob, ext, contentType } = await compressImage(file, 1600, 0.85);
       const path = `hero/hero-${Date.now()}.${ext}`;
-      const { error: upErr } = await sb.storage.from('product-images').upload(path, file, { cacheControl: '3600' });
+      const { error: upErr } = await sb.storage.from('product-images').upload(path, blob, { cacheControl: IMMUTABLE_CACHE, contentType });
       if (upErr) throw upErr;
       patch({ image: sb.storage.from('product-images').getPublicUrl(path).data.publicUrl });
     } catch (e: any) { setErr(e.message ?? String(e)); }
@@ -148,7 +149,7 @@ export function StorefrontPage() {
             {/* Live preview */}
             {device === 'desktop' ? (
               <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black aspect-video select-none">
-                <img src="/bg.png" alt="" className="absolute inset-0 w-full h-full object-cover opacity-90" />
+                <img src="/bg.webp" alt="" className="absolute inset-0 w-full h-full object-cover opacity-90" />
                 <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
                 <div className="absolute inset-0 flex items-center justify-between px-[6%]">
                   <div className="z-10 max-w-[50%]">
@@ -173,7 +174,7 @@ export function StorefrontPage() {
               <div className="flex justify-center">
                 {/* Phone frame — mirrors the mobile hero: dominant centered model, headline overlaid at the bottom */}
                 <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-black aspect-[9/19] w-[280px] select-none shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
-                  <img src="/bg.png" alt="" className="absolute inset-0 w-full h-full object-cover opacity-90" />
+                  <img src="/bg.webp" alt="" className="absolute inset-0 w-full h-full object-cover opacity-90" />
                   <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div

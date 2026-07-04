@@ -22,20 +22,20 @@ const PALETTE: ColorVariant[] = [
   { name: 'Orange', hex: '#C85A17' },
 ];
 
-const M1 = '/models/outfit_one_model.png';
-const M2 = '/models/outfit_two_model.png';
-const M3 = '/models/outfit_three_model.png';
-const M4 = '/models/outfit_four_model.png';
-const C1 = '/models/outfit_one_cloth.png';
-const C2 = '/models/outfit_two_cloth.png';
-const C3 = '/models/outfit_three_cloth.png';
-const C4 = '/models/outfit_four_cloth.png';
+const M1 = '/models/outfit_one_model.webp';
+const M2 = '/models/outfit_two_model.webp';
+const M3 = '/models/outfit_three_model.webp';
+const M4 = '/models/outfit_four_model.webp';
+const C1 = '/models/outfit_one_cloth.webp';
+const C2 = '/models/outfit_two_cloth.webp';
+const C3 = '/models/outfit_three_cloth.webp';
+const C4 = '/models/outfit_four_cloth.webp';
 
 // Real T-shirt art. Builds the 4 paths (White/Black × cloth/model) from the design slug.
 // Drop the 8 PNGs into public/models/ using the exact Melelo-* names below.
 const tee = (slug: 'DesignOne' | 'DesignTwo', name: string): Design => {
   const p = (color: 'White' | 'Black', view: '' | '-model') =>
-    `/models/Melelo-${slug}-${color}-Tshirt${view}.png`;
+    `/models/Melelo-${slug}-${color}-Tshirt${view}.webp`;
   return {
     id: `tee-${slug.toLowerCase()}`,
     name,
@@ -70,14 +70,33 @@ const FALLBACK_CATEGORIES: Category[] = [
 
 
 
+// Img with async decode, lazy loading (unless `eager`), and a fade-in when the
+// bytes arrive — late images ease in instead of popping. Cached images render
+// instantly (the `complete` check covers loads that beat hydration).
+function FadeImg({ eager, className, onLoad, ...rest }: React.ImgHTMLAttributes<HTMLImageElement> & { eager?: boolean }) {
+  const [loaded, setLoaded] = useState(false);
+  const ref = useRef<HTMLImageElement>(null);
+  useEffect(() => { if (ref.current?.complete) setLoaded(true); }, []);
+  return (
+    <img
+      ref={ref}
+      {...rest}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      onLoad={e => { setLoaded(true); onLoad?.(e); }}
+      className={`${className ?? ''} transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+    />
+  );
+}
+
 // Renders a garment image recolored to `hex`. If `coloredSrc` (a real per-color image)
 // is supplied it is used directly; otherwise the base `src` is shown with a mask-clipped
 // color-blend overlay as a placeholder until real per-color art exists.
-function Recolor({ src, coloredSrc, hex, alt, className, imgClassName, maskPosition = 'center' }: {
-  src: string; coloredSrc?: string; hex: string; alt?: string; className?: string; imgClassName?: string; maskPosition?: string;
+function Recolor({ src, coloredSrc, hex, alt, className, imgClassName, maskPosition = 'center', eager }: {
+  src: string; coloredSrc?: string; hex: string; alt?: string; className?: string; imgClassName?: string; maskPosition?: string; eager?: boolean;
 }) {
   if (coloredSrc) {
-    return <img src={coloredSrc} alt={alt} className={imgClassName} />;
+    return <FadeImg src={coloredSrc} alt={alt} className={imgClassName} eager={eager} />;
   }
   const maskStyle: React.CSSProperties = {
     backgroundColor: hex,
@@ -93,7 +112,7 @@ function Recolor({ src, coloredSrc, hex, alt, className, imgClassName, maskPosit
   };
   return (
     <div className={`relative ${className ?? ''}`}>
-      <img src={src} alt={alt} className={imgClassName} />
+      <FadeImg src={src} alt={alt} className={imgClassName} eager={eager} />
       <div aria-hidden className="absolute inset-0 pointer-events-none" style={maskStyle} />
     </div>
   );
@@ -104,12 +123,12 @@ type Slot = { designIndex: number; view: 'product' | 'model'; src: string; color
 
 // Renders one slot honoring the selected color: real per-color image if present, else a tinted
 // product placeholder (model placeholders show the base image — no blend on large/lifestyle shots).
-function SlotImage({ slot, imgClassName, maskPosition = 'center' }: { slot: Slot; imgClassName?: string; maskPosition?: string }) {
-  if (slot.coloredSrc) return <img src={slot.coloredSrc} alt={slot.label} className={imgClassName} />;
+function SlotImage({ slot, imgClassName, maskPosition = 'center', eager }: { slot: Slot; imgClassName?: string; maskPosition?: string; eager?: boolean }) {
+  if (slot.coloredSrc) return <FadeImg src={slot.coloredSrc} alt={slot.label} className={imgClassName} eager={eager} />;
   if (slot.view === 'product') {
-    return <Recolor src={slot.src} hex={slot.hex} alt={slot.label} className="w-full h-full" imgClassName={imgClassName} maskPosition={maskPosition} />;
+    return <Recolor src={slot.src} hex={slot.hex} alt={slot.label} className="w-full h-full" imgClassName={imgClassName} maskPosition={maskPosition} eager={eager} />;
   }
-  return <img src={slot.src} alt={slot.label} className={imgClassName} />;
+  return <FadeImg src={slot.src} alt={slot.label} className={imgClassName} eager={eager} />;
 }
 
 export default function App() {
@@ -390,18 +409,27 @@ export default function App() {
     return () => mq.removeEventListener('change', sync);
   }, []);
 
-  // Premium: preload every image of the current category in all its colors so swatch/gallery
-  // switches are instant (no loading jump). Runs when the category changes.
+  // Premium: preload the category's images so swatch/gallery switches are instant —
+  // but only when the network is idle, and the ACTIVE color first, so the preloads
+  // never compete with the hero/center image on slow connections.
   useEffect(() => {
-    const urls = new Set<string>();
+    const preload = (urls: Iterable<string>) => { for (const src of urls) { const img = new Image(); img.src = src; } };
+    const active = new Set<string>();
+    const rest = new Set<string>();
     category.designs.forEach(d => {
       d.colors.forEach(cv => {
-        urls.add(cv.item ?? d.item);
-        urls.add(cv.model ?? d.model);
+        const bucket = cv.name === colorName ? active : rest;
+        bucket.add(cv.item ?? d.item);
+        bucket.add(cv.model ?? d.model);
       });
     });
-    urls.forEach(src => { const img = new Image(); img.src = src; });
-  }, [category]);
+    const idle = (cb: () => void, timeout: number) =>
+      typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(cb, { timeout })
+        : window.setTimeout(cb, Math.min(timeout, 1500));
+    idle(() => preload(active), 2000);
+    idle(() => preload(rest), 6000);
+  }, [category, colorName]);
 
   return (
     <div className="w-full h-[100dvh] bg-zinc-900 text-white font-sans selection:bg-orange-500 selection:text-white overflow-hidden relative flex flex-col">
@@ -427,8 +455,10 @@ export default function App() {
       {/* Stable Background */}
       <div className="absolute inset-0 bg-black">
         <img
-          src="/bg.png"
+          src="/bg.webp"
           alt="Background texture"
+          fetchPriority="high"
+          decoding="async"
           className="w-full h-full object-cover"
         />
       </div>
@@ -451,7 +481,7 @@ export default function App() {
           </button>
 
           <div className="flex items-center">
-            <img src="/logo.png" alt="Brand Logo" className="h-8 md:h-10 object-contain drop-shadow-lg origin-left" />
+            <img src="/logo.webp" alt="Brand Logo" className="h-8 md:h-10 object-contain drop-shadow-lg origin-left" />
           </div>
 
           <div className="hidden lg:flex items-center gap-8">
@@ -594,7 +624,7 @@ export default function App() {
                   ? { transform: `translate(${x}px, ${y}px) scale(${s})` }
                   : undefined}
               >
-                <img src={hero.image ?? '/models/hero_model.png'} className="w-full h-full object-contain object-center drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)] scale-[3.2] translate-y-6 md:object-bottom md:origin-bottom md:scale-[2.5] md:-translate-x-24 md:translate-y-12" />
+                <img src={hero.image ?? '/models/hero_model.webp'} fetchPriority="high" decoding="async" className="w-full h-full object-contain object-center drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)] scale-[3.2] translate-y-6 md:object-bottom md:origin-bottom md:scale-[2.5] md:-translate-x-24 md:translate-y-12" />
               </div>
                 );
               })()}
@@ -651,7 +681,7 @@ export default function App() {
                     className="absolute inset-0"
                   >
                     {/* Center is always the model (-model) image of the active design + color. */}
-                    <SlotImage slot={centerSlot} imgClassName="w-full h-full object-contain object-bottom md:object-top drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]" maskPosition="center top" />
+                    <SlotImage slot={centerSlot} eager imgClassName="w-full h-full object-contain object-bottom md:object-top drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]" maskPosition="center top" />
                   </motion.div>
                 </AnimatePresence>
               </motion.div>
@@ -1312,7 +1342,7 @@ export default function App() {
                 {/* Footer copyright */}
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                   <p className="text-white/30 text-xs tracking-widest uppercase">© 2025 Melelo Brands. All rights reserved.</p>
-                  <img src="/logo.png" alt="Melelo Logo" className="h-6 opacity-30" />
+                  <img src="/logo.webp" alt="Melelo Logo" className="h-6 opacity-30" />
                 </div>
               </div>
             </motion.div>

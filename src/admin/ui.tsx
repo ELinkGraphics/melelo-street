@@ -100,7 +100,7 @@ export function AdminLayout({ email, onSignOut }: { email?: string; onSignOut: (
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col w-60 shrink-0 border-r border-white/10 bg-zinc-950">
         <div className="flex items-center gap-2 px-5 h-16 border-b border-white/10">
-          <img src="/logo.png" alt="Melelo" className="h-6 object-contain" />
+          <img src="/logo.webp" alt="Melelo" className="h-6 object-contain" />
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">Admin</span>
         </div>
         <Sidebar />

@@ -7,6 +7,14 @@ import './index.css';
 // Admin is code-split so the storefront never downloads the dashboard bundle.
 const AdminApp = lazy(() => import('./admin/AdminApp.tsx'));
 
+// Production-only service worker: repeat opens serve images/assets from disk
+// (dev is excluded so local changes are never masked by a stale cache).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* non-fatal */ });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

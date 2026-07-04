@@ -7,6 +7,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
+import { compressImage } from './lib/imageUpload';
 
 // ---------------------------------------------------------------------------
 // Types & model
@@ -175,9 +176,11 @@ export function useCommerce(): Commerce {
       let path: string | null = null;
       if (method === 'bank_slip') {
         if (!slipFile) throw new Error('A payment slip is required.');
-        const ext = (slipFile.name.split('.').pop() || 'png').toLowerCase();
+        // Downscale/encode client-side: a multi-MB phone photo uploads in
+        // seconds instead of minutes on a slow connection.
+        const { blob, ext, contentType } = await compressImage(slipFile, 1600, 0.85);
         path = `${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('payment-slips').upload(path, slipFile);
+        const { error: upErr } = await supabase.storage.from('payment-slips').upload(path, blob, { contentType });
         if (upErr) throw new Error(`Slip upload failed: ${upErr.message}`);
       }
 
@@ -321,7 +324,7 @@ function CartView({ c }: { c: Commerce }) {
             {c.cart.map(item => (
               <div key={item.uid} className="flex gap-4 items-center bg-white/5 rounded-2xl p-3">
                 <div className="w-20 h-20 rounded-xl bg-black/40 flex items-center justify-center shrink-0 overflow-hidden">
-                  <img src={item.image} alt={item.name} className="w-full h-full object-contain" />
+                  <img src={item.image} alt={item.name} loading="lazy" decoding="async" className="w-full h-full object-contain" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold truncate">{item.name}</p>
@@ -646,7 +649,7 @@ function AccountView({ c }: { c: Commerce }) {
               <div className="flex -space-x-3 shrink-0">
                 {order.items.slice(0, 3).map(it => (
                   <div key={it.uid} className="w-12 h-12 rounded-lg bg-black/50 border border-white/10 overflow-hidden flex items-center justify-center">
-                    <img src={it.image} alt="" className="w-full h-full object-contain" />
+                    <img src={it.image} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />
                   </div>
                 ))}
               </div>
@@ -783,7 +786,7 @@ function TrackingView({ c }: { c: Commerce }) {
           {order.items.map((it, i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-black/40 overflow-hidden flex items-center justify-center">
-                {it.image && <img src={it.image} alt="" className="w-full h-full object-contain" />}
+                {it.image && <img src={it.image} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{it.name}</p>
