@@ -1,18 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   X, Plus, Minus, Trash2, ShoppingBag, CheckCircle2,
   Package, Truck, MapPin, ChevronLeft, ChevronRight,
   Loader2, ClipboardList, Landmark, Upload, ReceiptText, BadgeCheck, Wallet,
-  ShieldCheck, XCircle,
+  XCircle,
 } from 'lucide-react';
+import { supabase } from './lib/supabase';
 
 // ---------------------------------------------------------------------------
 // Types & model
 // ---------------------------------------------------------------------------
 export interface CartItem {
   uid: string;       // designId + size + color, unique per line
-  designId: string;
+  designId: string;  // product uuid when the catalog is DB-driven
   name: string;
   image: string;
   size: string;
@@ -23,49 +24,59 @@ export interface CartItem {
 
 export type PaymentMethod = 'bank_slip' | 'chapa';
 
-export interface Order {
-  id: string;
-  items: CartItem[];
+// Local stub of a placed order. The server owns the truth; the stub carries the
+// (id, token) pair a guest needs to read their order back, plus display snapshots.
+export interface OrderStub {
+  id: string;        // orders.id (uuid)
+  humanId: string;   // MLB-YYYYMMDD-XXXXXX
+  token: string;     // tracking_token — secret; grants read access to this order
   total: number;
   placedAt: number;  // ms epoch
   address: string;
-  paymentMethod: PaymentMethod;
-  slip?: string;     // uploaded bank-transfer screenshot (data URL)
-  approvedAt?: number; // set when an admin approves the slip; drives the delivery sim
-  rejected?: boolean;  // admin rejected the slip
+  items: CartItem[];
+}
+
+// Live order as returned by the get_order_by_token RPC.
+export interface LiveOrder {
+  id: string;
+  human_id: string;
+  subtotal: number;
+  shipping: number;
+  total: number;
+  placed_at: string;
+  approved_at: string | null;
+  payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
+  fulfillment_status: 'pending_approval' | 'confirmed' | 'packed' | 'shipped' | 'out_for_delivery' | 'delivered' | 'cancelled';
+  payment_method: PaymentMethod;
+  address: string;
+  items: { name: string; image: string | null; size: string; color: string; unit_price: number; qty: number }[];
+  events: { status: string; note: string | null; at: string }[];
 }
 
 export type CommerceView =
-  | 'closed' | 'cart' | 'checkout' | 'processing' | 'success' | 'account' | 'tracking' | 'admin';
+  | 'closed' | 'cart' | 'checkout' | 'processing' | 'success' | 'account' | 'tracking';
 
 export const UNIT_PRICE = 149;
-const SHIPPING = 0;
 
-// Bank transfer target shown for the slip payment.
+// Fallback bank details; checkout fetches the live values from settings.
 export const BANK_DETAILS = {
   bank: 'Commercial Bank of Ethiopia',
   name: 'Melelo Brands PLC',
   account: '1000 2345 6789 01',
 };
 
-// Delivery simulation: order advances one step every STEP_MS while you watch.
-// Step 0 is the bank-slip "Payment approval" review stage.
-const STEP_MS = 6000;
+// Fulfillment pipeline (mirrors the fulfillment_status enum, minus 'cancelled').
 const STATUS_STEPS = [
-  { label: 'Payment approval', icon: ReceiptText },
-  { label: 'Order confirmed', icon: BadgeCheck },
-  { label: 'Packed', icon: Package },
-  { label: 'Shipped', icon: Truck },
-  { label: 'Out for delivery', icon: MapPin },
-  { label: 'Delivered', icon: CheckCircle2 },
-];
+  { key: 'pending_approval', label: 'Payment approval', icon: ReceiptText },
+  { key: 'confirmed', label: 'Order confirmed', icon: BadgeCheck },
+  { key: 'packed', label: 'Packed', icon: Package },
+  { key: 'shipped', label: 'Shipped', icon: Truck },
+  { key: 'out_for_delivery', label: 'Out for delivery', icon: MapPin },
+  { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
+] as const;
 
-// Step 0 (Payment approval) holds until an admin approves; the rest are timed from approval.
-function statusIndexFor(order: Order, now: number) {
-  if (!order.approvedAt) return 0;
-  const steps = Math.floor((now - order.approvedAt) / STEP_MS);
-  return Math.min(STATUS_STEPS.length - 1, 1 + steps);
-}
+const stepIndexOf = (status: LiveOrder['fulfillment_status']) =>
+  Math.max(0, STATUS_STEPS.findIndex(s => s.key === status));
 
 function fmtMoney(n: number) {
   return `$${n.toFixed(2)}`;
@@ -84,12 +95,20 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+// Fetch one order via its (id, token) pair. Returns null when unavailable.
+async function fetchLiveOrder(stub: Pick<OrderStub, 'id' | 'token'>): Promise<LiveOrder | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('get_order_by_token', { p_id: stub.id, p_token: stub.token });
+  if (error || !data) return null;
+  return data as LiveOrder;
+}
+
 // ---------------------------------------------------------------------------
-// State hook — single source of truth for cart, orders and the overlay view
+// State hook — single source of truth for cart, order stubs and the overlay view
 // ---------------------------------------------------------------------------
 export interface Commerce {
   cart: CartItem[];
-  orders: Order[];
+  orders: OrderStub[];
   view: CommerceView;
   setView: (v: CommerceView) => void;
   activeOrderId: string | null;
@@ -98,24 +117,26 @@ export interface Commerce {
   addToCart: (item: Omit<CartItem, 'uid'>) => void;
   updateQty: (uid: string, delta: number) => void;
   removeItem: (uid: string) => void;
-  placeOrder: (address: string, slip: string) => Order;
-  approveOrder: (orderId: string) => void;
-  rejectOrder: (orderId: string) => void;
-  pendingCount: number;
+  submitOrder: (info: {
+    name: string; address: string; phone: string; email: string;
+    method: PaymentMethod; slipFile: File | null; discountCode?: string;
+  }) => Promise<void>;
+  lastError: string | null;
   openCart: () => void;
   openAccount: () => void;
-  openAdmin: () => void;
   openTracking: (orderId: string) => void;
 }
 
 export function useCommerce(): Commerce {
   const [cart, setCart] = useState<CartItem[]>(() => load('mlb_cart', []));
-  const [orders, setOrders] = useState<Order[]>(() => load('mlb_orders', []));
+  // v2 key: v1 held fully-simulated orders with an incompatible shape.
+  const [orders, setOrders] = useState<OrderStub[]>(() => load('mlb_orders_v2', []));
   const [view, setView] = useState<CommerceView>('closed');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   useEffect(() => { try { localStorage.setItem('mlb_cart', JSON.stringify(cart)); } catch { /* quota */ } }, [cart]);
-  useEffect(() => { try { localStorage.setItem('mlb_orders', JSON.stringify(orders)); } catch { /* quota — slip images can be large */ } }, [orders]);
+  useEffect(() => { try { localStorage.setItem('mlb_orders_v2', JSON.stringify(orders)); } catch { /* quota */ } }, [orders]);
 
   const cartCount = cart.reduce((n, i) => n + i.qty, 0);
   const cartTotal = cart.reduce((n, i) => n + i.qty * i.price, 0);
@@ -141,40 +162,94 @@ export function useCommerce(): Commerce {
     setCart(prev => prev.filter(i => i.uid !== uid));
   };
 
-  const placeOrder: Commerce['placeOrder'] = (address, slip) => {
-    const stamp = new Date();
-    const id = `MLB-${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, '0')}${String(stamp.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const order: Order = {
-      id,
-      items: cart,
-      total: cartTotal + SHIPPING,
-      placedAt: Date.now(),
-      address,
-      paymentMethod: 'bank_slip',
-      slip,
-    };
-    setOrders(prev => [order, ...prev]);
-    setCart([]);
-    setActiveOrderId(id);
-    return order;
+  // Real order placement. Bank slip: upload → place_order → success view.
+  // Chapa: place_order → chapa_init → redirect to Chapa's hosted checkout.
+  const submitOrder: Commerce['submitOrder'] = async ({ name, address, phone, email, method, slipFile, discountCode }) => {
+    setLastError(null);
+    if (!supabase) {
+      setLastError('Ordering is temporarily unavailable — the store backend is not connected.');
+      return;
+    }
+    setView('processing');
+    try {
+      let path: string | null = null;
+      if (method === 'bank_slip') {
+        if (!slipFile) throw new Error('A payment slip is required.');
+        const ext = (slipFile.name.split('.').pop() || 'png').toLowerCase();
+        path = `${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('payment-slips').upload(path, slipFile);
+        if (upErr) throw new Error(`Slip upload failed: ${upErr.message}`);
+      }
+
+      const { data, error } = await supabase.rpc('place_order', {
+        p_name: name,
+        p_address: address,
+        p_phone: phone,
+        p_email: email.trim() || null,
+        p_slip_path: path,
+        p_items: cart.map(i => ({ product_id: i.designId, color: i.color, size: i.size, qty: i.qty })),
+        p_discount_code: discountCode?.trim() || null,
+        p_payment_method: method,
+      });
+      if (error) throw new Error(error.message);
+
+      const res = data as { id: string; human_id: string; token: string; total: number };
+      const stub: OrderStub = {
+        id: res.id,
+        humanId: res.human_id,
+        token: res.token,
+        total: Number(res.total),
+        placedAt: Date.now(),
+        address: `${name}, ${address}`,
+        items: cart,
+      };
+      setOrders(prev => [stub, ...prev]);
+      setCart([]);
+      setActiveOrderId(res.id);
+
+      if (method === 'chapa') {
+        // Hosted Checkout: get the checkout_url and hand the browser to Chapa.
+        // The return_url brings the customer back with ?chapa_order=<id>.
+        const returnUrl = `${window.location.origin}/?chapa_order=${res.id}`;
+        const { data: init, error: initErr } = await supabase.rpc('chapa_init', {
+          p_id: res.id, p_token: res.token, p_return_url: returnUrl,
+        });
+        if (initErr) throw new Error(initErr.message);
+        const url = (init as any)?.checkout_url;
+        if (!url) throw new Error('Chapa did not return a checkout link.');
+        window.location.href = url;
+        return; // navigation takes over
+      }
+
+      setView('success');
+    } catch (e: any) {
+      setLastError(e?.message ?? 'Something went wrong placing your order.');
+      setView('checkout');
+    }
   };
 
-  const approveOrder: Commerce['approveOrder'] = (orderId) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, approvedAt: Date.now(), rejected: false } : o));
-  };
-
-  const rejectOrder: Commerce['rejectOrder'] = (orderId) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, rejected: true, approvedAt: undefined } : o));
-  };
-
-  const pendingCount = orders.filter(o => !o.approvedAt && !o.rejected).length;
+  // Returning from Chapa's hosted page: confirm the payment server-side, then
+  // open tracking for that order. Runs once on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('chapa_order');
+    if (!orderId) return;
+    window.history.replaceState({}, '', window.location.pathname); // clean the URL
+    const stub = (load<OrderStub[]>('mlb_orders_v2', [])).find(o => o.id === orderId);
+    if (!stub || !supabase) return;
+    setActiveOrderId(orderId);
+    setView('tracking');
+    supabase.rpc('chapa_confirm', { p_id: stub.id, p_token: stub.token }).then(() => {
+      // Tracking view polls — the confirmed status appears on its next tick.
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     cart, orders, view, setView, activeOrderId, cartCount, cartTotal,
-    addToCart, updateQty, removeItem, placeOrder, approveOrder, rejectOrder, pendingCount,
+    addToCart, updateQty, removeItem, submitOrder, lastError,
     openCart: () => setView('cart'),
     openAccount: () => setView('account'),
-    openAdmin: () => setView('admin'),
     openTracking: (orderId) => { setActiveOrderId(orderId); setView('tracking'); },
   };
 }
@@ -182,17 +257,6 @@ export function useCommerce(): Commerce {
 // ---------------------------------------------------------------------------
 // Shared UI
 // ---------------------------------------------------------------------------
-function useNow(active: boolean) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [active]);
-  return now;
-}
-
 function PanelHeader({ title, onClose, onBack }: { title: string; onClose: () => void; onBack?: () => void }) {
   return (
     <header className="flex items-center gap-3 px-6 py-5 border-b border-white/10 shrink-0">
@@ -214,6 +278,26 @@ const stepVariants = {
   animate: { opacity: 1, x: 0 },
   exit: { opacity: 0, x: -24 },
 };
+
+function StatusBadge({ order }: { order: Pick<LiveOrder, 'payment_status' | 'fulfillment_status'> | null }) {
+  const base = 'text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full';
+  if (!order) return <span className={`${base} bg-white/10 text-zinc-400`}>—</span>;
+  if (order.payment_status === 'failed') {
+    return <span className={`${base} bg-red-500/15 text-red-400`}>Payment rejected</span>;
+  }
+  if (order.fulfillment_status === 'cancelled') {
+    return <span className={`${base} bg-red-500/15 text-red-400`}>Cancelled</span>;
+  }
+  const idx = stepIndexOf(order.fulfillment_status);
+  const delivered = order.fulfillment_status === 'delivered';
+  const awaiting = order.fulfillment_status === 'pending_approval';
+  const tone = delivered
+    ? 'bg-green-500/15 text-green-400'
+    : awaiting
+      ? 'bg-amber-500/15 text-amber-400'
+      : 'bg-orange-500/15 text-orange-400';
+  return <span className={`${base} ${tone}`}>{STATUS_STEPS[idx].label}</span>;
+}
 
 // ---------------------------------------------------------------------------
 // Views
@@ -277,27 +361,71 @@ function CartView({ c }: { c: Commerce }) {
 function CheckoutView({ c }: { c: Commerce }) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
   const [method, setMethod] = useState<PaymentMethod | null>(null);
-  const [slip, setSlip] = useState('');
+  const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [slipPreview, setSlipPreview] = useState('');
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const [bank, setBank] = useState(BANK_DETAILS);
+  const [ship, setShip] = useState<{ flat: number; threshold: number | null }>({ flat: 0, threshold: null });
+  const [email, setEmail] = useState('');
+  const [chapaEnabled, setChapaEnabled] = useState(false);
+
+  // Discount code entry — validated server-side via the validate_discount RPC.
+  const [code, setCode] = useState('');
+  const [applied, setApplied] = useState<{ code: string; amount: number; label: string } | null>(null);
+  const [codeErr, setCodeErr] = useState<string | null>(null);
+  const [checkingCode, setCheckingCode] = useState(false);
+
+  // Live bank details + shipping rules + Chapa availability from settings (public read).
+  useEffect(() => {
+    supabase?.from('settings').select('bank_details,shipping_flat,free_ship_threshold,chapa_enabled').eq('id', 1).maybeSingle().then(({ data }) => {
+      const s = data as any;
+      const bd = s?.bank_details;
+      if (bd?.bank && bd?.name && bd?.account) setBank(bd);
+      if (s) setShip({ flat: Number(s.shipping_flat ?? 0), threshold: s.free_ship_threshold != null ? Number(s.free_ship_threshold) : null });
+      setChapaEnabled(Boolean(s?.chapa_enabled));
+    });
+  }, []);
+
+  const applyCode = async () => {
+    const trimmed = code.trim();
+    if (!trimmed || !supabase) return;
+    setCheckingCode(true); setCodeErr(null);
+    const { data, error } = await supabase.rpc('validate_discount', { p_code: trimmed, p_subtotal: c.cartTotal });
+    setCheckingCode(false);
+    const res = data as any;
+    if (error || !res) { setCodeErr('Could not check the code — try again.'); return; }
+    if (!res.valid) { setApplied(null); setCodeErr(res.message ?? 'Invalid code.'); return; }
+    setApplied({ code: res.code, amount: Number(res.amount), label: res.label });
+  };
+
+  // Mirrors the server's shipping rule for display; the server recomputes at placement.
+  const discountAmt = applied?.amount ?? 0;
+  const shippingAmt = ship.threshold != null && (c.cartTotal - discountAmt) >= ship.threshold ? 0 : ship.flat;
+  const grandTotal = Math.max(0, c.cartTotal - discountAmt) + shippingAmt;
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setSlip(reader.result as string);
-    reader.readAsDataURL(file);
+    setSlipFile(file);
+    setSlipPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
   };
 
-  const valid = !!(name.trim() && address.trim() && method === 'bank_slip' && slip);
+  const valid = !!(name.trim() && address.trim() && (
+    (method === 'bank_slip' && slipFile) ||
+    (method === 'chapa' && /^\S+@\S+\.\S+$/.test(email.trim()))
+  ));
 
   const placeOrder = () => {
-    if (!valid) return;
-    c.setView('processing');
-    setTimeout(() => {
-      c.placeOrder(`${name}, ${address}`, slip);
-      c.setView('success');
-    }, 1500);
+    if (!valid || !method) return;
+    c.submitOrder({
+      name: name.trim(), address: address.trim(), phone: phone.trim(), email: email.trim(),
+      method, slipFile, discountCode: applied?.code,
+    });
   };
 
   // text-base (16px) is required on iOS — smaller fonts trigger auto-zoom on focus.
@@ -307,27 +435,53 @@ function CheckoutView({ c }: { c: Commerce }) {
     <motion.div key="checkout" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
       <PanelHeader title="Checkout" onClose={() => c.setView('closed')} onBack={() => c.setView('cart')} />
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        {c.lastError && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {c.lastError}
+          </div>
+        )}
         <section className="space-y-3">
           <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400 flex items-center gap-2"><MapPin size={14} /> Shipping</h4>
           <input className={field} placeholder="Full name" value={name} onChange={e => setName(e.target.value)} />
           <input className={field} placeholder="Address, city" value={address} onChange={e => setAddress(e.target.value)} />
+          <input className={field} placeholder="Phone (optional)" value={phone} onChange={e => setPhone(e.target.value)} />
+          <input className={field} type="email" placeholder={method === 'chapa' ? 'Email (required for Chapa)' : 'Email (optional)'} value={email} onChange={e => setEmail(e.target.value)} />
         </section>
 
         <section className="space-y-3">
           <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400 flex items-center gap-2"><Wallet size={14} /> Payment method</h4>
 
-          {/* Chapa — coming soon */}
-          <button
-            type="button" disabled
-            className="w-full flex items-center gap-3 border border-white/10 rounded-xl px-4 py-3 text-left opacity-60 cursor-not-allowed"
-          >
-            <Wallet size={20} className="text-zinc-400 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold">Chapa</p>
-              <p className="text-[11px] text-zinc-500">Cards, mobile money & more</p>
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-700 text-zinc-200 px-2 py-1 rounded-full">Coming soon</span>
-          </button>
+          {/* Chapa — live when the admin toggle is on, otherwise "Coming soon" */}
+          {chapaEnabled ? (
+            <button
+              type="button" onClick={() => setMethod('chapa')}
+              className={`w-full flex items-center gap-3 border rounded-xl px-4 py-3 text-left transition-colors ${method === 'chapa' ? 'border-orange-500 bg-orange-500/10' : 'border-white/15 hover:border-white/30'}`}
+            >
+              <Wallet size={20} className="text-orange-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Chapa</p>
+                <p className="text-[11px] text-zinc-500">Cards, telebirr, mobile money — secure hosted checkout</p>
+              </div>
+              <span className={`w-4 h-4 rounded-full border-2 ${method === 'chapa' ? 'border-orange-500 bg-orange-500' : 'border-zinc-500'}`} />
+            </button>
+          ) : (
+            <button
+              type="button" disabled
+              className="w-full flex items-center gap-3 border border-white/10 rounded-xl px-4 py-3 text-left opacity-60 cursor-not-allowed"
+            >
+              <Wallet size={20} className="text-zinc-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Chapa</p>
+                <p className="text-[11px] text-zinc-500">Cards, mobile money & more</p>
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-700 text-zinc-200 px-2 py-1 rounded-full">Coming soon</span>
+            </button>
+          )}
+          {method === 'chapa' && (
+            <p className="text-[11px] text-zinc-500 px-1">
+              You'll be redirected to Chapa's secure page to pay, then brought back here to track your order.
+            </p>
+          )}
 
           {/* Bank slip — active */}
           <button
@@ -345,18 +499,18 @@ function CheckoutView({ c }: { c: Commerce }) {
           {method === 'bank_slip' && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-3 overflow-hidden">
               <div className="bg-white/5 rounded-xl p-4 text-sm space-y-1.5">
-                <p className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1">Transfer {fmtMoney(c.cartTotal)} to</p>
-                <div className="flex justify-between"><span className="text-zinc-400">Bank</span><span className="font-medium text-right">{BANK_DETAILS.bank}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Account name</span><span className="font-medium text-right">{BANK_DETAILS.name}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Account no.</span><span className="font-mono font-medium text-right">{BANK_DETAILS.account}</span></div>
+                <p className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1">Transfer {fmtMoney(grandTotal)} to</p>
+                <div className="flex justify-between"><span className="text-zinc-400">Bank</span><span className="font-medium text-right">{bank.bank}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Account name</span><span className="font-medium text-right">{bank.name}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Account no.</span><span className="font-mono font-medium text-right">{bank.account}</span></div>
               </div>
 
               <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden" />
-              {slip ? (
+              {slipFile ? (
                 <div className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-                  <img src={slip} alt="Payment slip" className="w-14 h-14 rounded-lg object-cover bg-black/40" />
+                  <img src={slipPreview} alt="Payment slip" className="w-14 h-14 rounded-lg object-cover bg-black/40" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium flex items-center gap-1.5"><CheckCircle2 size={14} className="text-green-400" /> Screenshot uploaded</p>
+                    <p className="text-sm font-medium flex items-center gap-1.5"><CheckCircle2 size={14} className="text-green-400" /> Screenshot ready</p>
                     <p className="text-[11px] text-zinc-500">Will be reviewed for payment approval</p>
                   </div>
                   <button onClick={() => fileRef.current?.click()} className="text-xs font-semibold text-orange-400 hover:text-orange-300">Replace</button>
@@ -370,11 +524,47 @@ function CheckoutView({ c }: { c: Commerce }) {
             </motion.div>
           )}
         </section>
+
+        {/* Discount code */}
+        <section className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">Discount code</h4>
+          <div className="flex gap-2">
+            <input
+              className={`${field} font-mono uppercase`} placeholder="e.g. WELCOME10" value={code}
+              onChange={e => { setCode(e.target.value.toUpperCase()); setCodeErr(null); }}
+              onKeyDown={e => { if (e.key === 'Enter') applyCode(); }}
+            />
+            <button onClick={applyCode} disabled={!code.trim() || checkingCode}
+              className="shrink-0 px-5 rounded-xl border border-white/20 text-sm font-semibold hover:bg-white hover:text-black transition-colors disabled:opacity-40">
+              {checkingCode ? <Loader2 size={16} className="animate-spin" /> : 'Apply'}
+            </button>
+          </div>
+          {codeErr && <p className="text-xs text-red-400">{codeErr}</p>}
+          {applied && (
+            <p className="text-xs text-green-400 flex items-center gap-1.5">
+              <CheckCircle2 size={13} /> {applied.code} applied — {applied.label}
+              <button onClick={() => { setApplied(null); setCode(''); }} className="text-zinc-500 hover:text-white underline ml-1">remove</button>
+            </p>
+          )}
+        </section>
       </div>
-      <div className="border-t border-white/10 px-6 pt-6 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] space-y-3 shrink-0">
-        <div className="flex justify-between text-sm">
-          <span className="text-zinc-400">Total</span>
-          <span className="text-xl font-bold">{fmtMoney(c.cartTotal)}</span>
+      <div className="border-t border-white/10 px-6 pt-5 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] space-y-3 shrink-0">
+        <div className="space-y-1.5 text-sm">
+          <div className="flex justify-between text-zinc-400">
+            <span>Subtotal</span><span className="text-white">{fmtMoney(c.cartTotal)}</span>
+          </div>
+          {applied && (
+            <div className="flex justify-between text-green-400">
+              <span>Discount ({applied.code})</span><span>−{fmtMoney(discountAmt)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-zinc-400">
+            <span>Shipping</span><span className="text-white">{shippingAmt === 0 ? 'Free' : fmtMoney(shippingAmt)}</span>
+          </div>
+          <div className="flex justify-between pt-1.5 border-t border-white/10">
+            <span className="text-zinc-400">Total</span>
+            <span className="text-xl font-bold">{fmtMoney(grandTotal)}</span>
+          </div>
         </div>
         <button onClick={placeOrder} disabled={!valid}
           className="w-full bg-white text-black py-4 rounded-full font-bold uppercase tracking-wide hover:bg-orange-500 hover:text-white transition-colors disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-black disabled:cursor-not-allowed">
@@ -390,7 +580,7 @@ function ProcessingView() {
     <motion.div key="processing" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col items-center justify-center h-full gap-5 text-center px-8">
       <Loader2 size={44} className="text-orange-400 animate-spin" />
       <p className="text-lg font-medium">Submitting your order…</p>
-      <p className="text-sm text-zinc-400">Sending your slip for payment approval.</p>
+      <p className="text-sm text-zinc-400">Uploading your slip and reserving your items.</p>
     </motion.div>
   );
 }
@@ -405,10 +595,10 @@ function SuccessView({ c }: { c: Commerce }) {
           <CheckCircle2 size={72} className="text-green-400" />
         </motion.div>
         <h2 className="text-2xl font-bold">Order received</h2>
-        <p className="text-sm text-zinc-400">Thanks! Your bank slip is now pending <span className="text-amber-400 font-medium">payment approval</span> — an admin will review and approve it before your order ships.</p>
+        <p className="text-sm text-zinc-400">Thanks! Your bank slip is now pending <span className="text-amber-400 font-medium">payment approval</span> — we'll review it and confirm your order shortly.</p>
         {order && (
           <div className="w-full bg-white/5 rounded-2xl p-4 mt-2 text-left">
-            <div className="flex justify-between text-sm"><span className="text-zinc-400">Order</span><span className="font-mono font-semibold">{order.id}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-zinc-400">Order</span><span className="font-mono font-semibold">{order.humanId}</span></div>
             <div className="flex justify-between text-sm mt-1"><span className="text-zinc-400">Total</span><span className="font-semibold">{fmtMoney(order.total)}</span></div>
             <div className="flex justify-between text-sm mt-1"><span className="text-zinc-400">Payment</span><span className="font-semibold">Bank transfer slip</span></div>
             <div className="flex justify-between text-sm mt-1"><span className="text-zinc-400">Status</span><span className="font-semibold text-orange-400">Payment approval</span></div>
@@ -427,24 +617,18 @@ function SuccessView({ c }: { c: Commerce }) {
   );
 }
 
-function StatusBadge({ order, now }: { order: Order; now: number }) {
-  const base = 'text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full';
-  if (order.rejected) {
-    return <span className={`${base} bg-red-500/15 text-red-400`}>Payment rejected</span>;
-  }
-  const index = statusIndexFor(order, now);
-  const delivered = index >= STATUS_STEPS.length - 1;
-  const awaiting = index === 0; // payment approval pending
-  const tone = delivered
-    ? 'bg-green-500/15 text-green-400'
-    : awaiting
-      ? 'bg-amber-500/15 text-amber-400'
-      : 'bg-orange-500/15 text-orange-400';
-  return <span className={`${base} ${tone}`}>{STATUS_STEPS[index].label}</span>;
-}
-
 function AccountView({ c }: { c: Commerce }) {
-  const now = useNow(true);
+  // Live statuses for each stub, fetched once when the panel opens.
+  const [live, setLive] = useState<Record<string, LiveOrder | null>>({});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const entries = await Promise.all(c.orders.map(async o => [o.id, await fetchLiveOrder(o)] as const));
+      if (alive) setLive(Object.fromEntries(entries));
+    })();
+    return () => { alive = false; };
+  }, [c.orders]);
+
   return (
     <motion.div key="account" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
       <PanelHeader title="My Orders" onClose={() => c.setView('closed')} />
@@ -455,7 +639,7 @@ function AccountView({ c }: { c: Commerce }) {
           <p className="text-sm">Your placed orders and delivery tracking will appear here.</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 pb-[calc(1rem_+_env(safe-area-inset-bottom))]">
           {c.orders.map(order => (
             <button key={order.id} onClick={() => c.openTracking(order.id)}
               className="w-full text-left bg-white/5 hover:bg-white/10 rounded-2xl p-4 transition-colors flex items-center gap-4">
@@ -467,34 +651,42 @@ function AccountView({ c }: { c: Commerce }) {
                 ))}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-mono text-xs text-zinc-400">{order.id}</p>
+                <p className="font-mono text-xs text-zinc-400">{order.humanId}</p>
                 <p className="text-sm font-medium">{fmtDate(order.placedAt)} · {fmtMoney(order.total)}</p>
-                <div className="mt-1.5"><StatusBadge order={order} now={now} /></div>
+                <div className="mt-1.5"><StatusBadge order={live[order.id] ?? null} /></div>
               </div>
               <ChevronRight size={18} className="text-zinc-500 shrink-0" />
             </button>
           ))}
         </div>
       )}
-      <div className="border-t border-white/10 px-4 pt-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] shrink-0">
-        <button onClick={c.openAdmin}
-          className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-zinc-300 hover:text-white transition-colors py-2">
-          <ShieldCheck size={16} /> Admin · approvals
-          {c.pendingCount > 0 && (
-            <span className="bg-amber-500 text-black text-[10px] font-bold min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full">{c.pendingCount}</span>
-          )}
-        </button>
-      </div>
     </motion.div>
   );
 }
 
 function TrackingView({ c }: { c: Commerce }) {
-  const now = useNow(true);
-  const order = c.orders.find(o => o.id === c.activeOrderId);
+  const stub = c.orders.find(o => o.id === c.activeOrderId);
+  const [order, setOrder] = useState<LiveOrder | null>(null);
+  const [loading, setLoading] = useState(true);
   const back = c.orders.length > 0 ? () => c.setView('account') : undefined;
 
-  if (!order) {
+  // Poll the live order every 8s while the panel is open — the admin advancing
+  // fulfillment shows up here without a refresh.
+  const refresh = useCallback(async () => {
+    if (!stub) { setLoading(false); return; }
+    const data = await fetchLiveOrder(stub);
+    setOrder(data);
+    setLoading(false);
+  }, [stub?.id, stub?.token]);
+
+  useEffect(() => {
+    setLoading(true);
+    refresh();
+    const id = setInterval(refresh, 8000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  if (!stub || (!loading && !order)) {
     return (
       <motion.div key="tracking" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
         <PanelHeader title="Tracking" onClose={() => c.setView('closed')} onBack={back} />
@@ -503,41 +695,57 @@ function TrackingView({ c }: { c: Commerce }) {
     );
   }
 
-  const idx = statusIndexFor(order, now);
-  const rejected = !!order.rejected;
-  const pending = !rejected && idx === 0;
+  if (loading || !order) {
+    return (
+      <motion.div key="tracking" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
+        <PanelHeader title="Track Order" onClose={() => c.setView('closed')} onBack={back} />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 size={28} className="text-orange-400 animate-spin" />
+        </div>
+      </motion.div>
+    );
+  }
+
+  const rejected = order.payment_status === 'failed';
+  const cancelled = order.fulfillment_status === 'cancelled';
+  const idx = cancelled ? 0 : stepIndexOf(order.fulfillment_status);
+  const pending = !rejected && !cancelled && order.fulfillment_status === 'pending_approval';
+  const delivered = order.fulfillment_status === 'delivered';
+
   return (
     <motion.div key="tracking" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
       <PanelHeader title="Track Order" onClose={() => c.setView('closed')} onBack={back} />
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 overflow-y-auto px-6 py-5 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))]">
         <div className="bg-white/5 rounded-2xl p-4 mb-6">
           <div className="flex justify-between items-center">
-            <span className="font-mono text-xs text-zinc-400">{order.id}</span>
-            <StatusBadge order={order} now={now} />
+            <span className="font-mono text-xs text-zinc-400">{order.human_id}</span>
+            <StatusBadge order={order} />
           </div>
           <p className="text-sm mt-2 text-zinc-300">{order.address}</p>
           <p className="text-sm mt-1 text-zinc-400">
             {rejected
               ? 'Payment was not approved. Please place a new order with a valid slip.'
-              : idx >= STATUS_STEPS.length - 1
-                ? `Delivered on ${fmtDate(now)}`
-                : pending
-                  ? 'Waiting for an admin to approve your payment…'
-                  : `Est. delivery ${fmtDate(order.placedAt + 3 * 86400000)}`}
+              : cancelled
+                ? 'This order was cancelled.'
+                : delivered
+                  ? 'Delivered — enjoy!'
+                  : pending
+                    ? 'Waiting for payment approval…'
+                    : `Est. delivery ${fmtDate(new Date(order.placed_at).getTime() + 3 * 86400000)}`}
           </p>
         </div>
 
         {/* Payment */}
         <div className="flex items-center gap-3 bg-white/5 rounded-2xl p-3 mb-6">
           <div className="w-12 h-12 rounded-lg bg-black/40 flex items-center justify-center overflow-hidden shrink-0">
-            {order.slip
-              ? <img src={order.slip} alt="Payment slip" className="w-full h-full object-cover" />
-              : <Landmark size={18} className="text-zinc-400" />}
+            <Landmark size={18} className="text-zinc-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">Bank transfer slip</p>
+            <p className="text-sm font-medium">{order.payment_method === 'chapa' ? 'Chapa' : 'Bank transfer slip'}</p>
             <p className={`text-xs ${rejected ? 'text-red-400' : pending ? 'text-amber-400' : 'text-green-400'}`}>
-              {rejected ? 'Payment rejected' : pending ? 'Awaiting payment approval' : 'Payment approved'}
+              {rejected ? 'Payment rejected'
+                : pending ? (order.payment_method === 'chapa' ? 'Awaiting payment' : 'Awaiting payment approval')
+                : (order.payment_method === 'chapa' ? 'Paid via Chapa' : 'Payment approved')}
             </p>
           </div>
         </div>
@@ -545,23 +753,23 @@ function TrackingView({ c }: { c: Commerce }) {
         {/* Timeline */}
         <div className="relative pl-2">
           {STATUS_STEPS.map((step, i) => {
-            const isRejectedStep = rejected && i === 0;
-            const done = !rejected && i <= idx;
-            const current = !rejected && i === idx;
-            const Icon = isRejectedStep ? XCircle : step.icon;
+            const failedHere = (rejected || cancelled) && i === 0;
+            const done = !rejected && !cancelled && i <= idx;
+            const current = !rejected && !cancelled && i === idx && !delivered;
+            const Icon = failedHere ? XCircle : step.icon;
             const last = i === STATUS_STEPS.length - 1;
             return (
-              <div key={step.label} className="flex gap-4 relative">
+              <div key={step.key} className="flex gap-4 relative">
                 {!last && (
-                  <span className={`absolute left-[19px] top-10 bottom-0 w-[2px] ${!rejected && i < idx ? 'bg-orange-500' : 'bg-white/10'}`} />
+                  <span className={`absolute left-[19px] top-10 bottom-0 w-[2px] ${done && i < idx ? 'bg-orange-500' : 'bg-white/10'}`} />
                 )}
-                <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${isRejectedStep ? 'bg-red-500 text-white' : done ? 'bg-orange-500 text-black' : 'bg-white/10 text-zinc-500'} ${current ? 'ring-4 ring-orange-500/25' : ''}`}>
+                <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${failedHere ? 'bg-red-500 text-white' : done ? 'bg-orange-500 text-black' : 'bg-white/10 text-zinc-500'} ${current ? 'ring-4 ring-orange-500/25' : ''}`}>
                   <Icon size={18} />
                 </div>
-                <div className={`pb-8 pt-1.5 ${isRejectedStep || done ? '' : 'opacity-50'}`}>
-                  <p className="font-semibold leading-tight">{isRejectedStep ? 'Payment rejected' : step.label}</p>
+                <div className={`pb-8 pt-1.5 ${failedHere || done ? '' : 'opacity-50'}`}>
+                  <p className="font-semibold leading-tight">{failedHere ? (rejected ? 'Payment rejected' : 'Cancelled') : step.label}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    {isRejectedStep ? 'Slip not accepted' : done ? (current && !last ? 'In progress…' : 'Completed') : 'Pending'}
+                    {failedHere ? (rejected ? 'Slip not accepted' : 'Order cancelled') : done ? (current ? 'In progress…' : 'Completed') : 'Pending'}
                   </p>
                 </div>
               </div>
@@ -572,80 +780,20 @@ function TrackingView({ c }: { c: Commerce }) {
         {/* Items */}
         <div className="mt-2 border-t border-white/10 pt-5 space-y-3">
           <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">Items</h4>
-          {order.items.map(it => (
-            <div key={it.uid} className="flex items-center gap-3">
+          {order.items.map((it, i) => (
+            <div key={i} className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-black/40 overflow-hidden flex items-center justify-center">
-                <img src={it.image} alt="" className="w-full h-full object-contain" />
+                {it.image && <img src={it.image} alt="" className="w-full h-full object-contain" />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{it.name}</p>
                 <p className="text-xs text-zinc-400">Size {it.size} · {it.color} · Qty {it.qty}</p>
               </div>
-              <span className="text-sm font-semibold">{fmtMoney(it.price * it.qty)}</span>
+              <span className="text-sm font-semibold">{fmtMoney(Number(it.unit_price) * it.qty)}</span>
             </div>
           ))}
         </div>
       </div>
-    </motion.div>
-  );
-}
-
-function AdminView({ c }: { c: Commerce }) {
-  const now = useNow(true);
-  return (
-    <motion.div key="admin" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
-      <PanelHeader title="Admin · Approvals" onClose={() => c.setView('closed')} onBack={() => c.setView('account')} />
-      {c.orders.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4 text-zinc-400">
-          <ShieldCheck size={48} className="text-zinc-600" />
-          <p className="text-lg font-medium text-white">Nothing to review</p>
-          <p className="text-sm">Bank-slip orders awaiting approval will show up here.</p>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-          <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-            {c.pendingCount > 0 ? `${c.pendingCount} awaiting approval` : 'All caught up'}
-          </p>
-          {c.orders.map(order => {
-            const isPending = !order.approvedAt && !order.rejected;
-            return (
-              <div key={order.id} className="bg-white/5 rounded-2xl p-4 space-y-3">
-                <div className="flex gap-3">
-                  <a href={order.slip || undefined} target="_blank" rel="noreferrer"
-                    className="w-16 h-16 rounded-lg bg-black/40 overflow-hidden flex items-center justify-center shrink-0 ring-1 ring-white/10 hover:ring-orange-500 transition">
-                    {order.slip
-                      ? <img src={order.slip} alt="Payment slip" className="w-full h-full object-cover" />
-                      : <Landmark size={20} className="text-zinc-400" />}
-                  </a>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-mono text-xs text-zinc-400">{order.id}</p>
-                    <p className="text-sm font-medium truncate">{order.address}</p>
-                    <p className="text-xs text-zinc-400">{order.items.reduce((n, i) => n + i.qty, 0)} item(s) · {fmtMoney(order.total)}</p>
-                    <div className="mt-1.5"><StatusBadge order={order} now={now} /></div>
-                  </div>
-                </div>
-                {isPending && (
-                  <div className="flex gap-2">
-                    <button onClick={() => c.approveOrder(order.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-green-500 text-black text-sm font-bold py-2.5 rounded-full hover:bg-green-400 transition-colors">
-                      <BadgeCheck size={16} /> Approve
-                    </button>
-                    <button onClick={() => c.rejectOrder(order.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 border border-red-500/50 text-red-400 text-sm font-bold py-2.5 rounded-full hover:bg-red-500/10 transition-colors">
-                      <XCircle size={16} /> Reject
-                    </button>
-                  </div>
-                )}
-                {!isPending && (
-                  <p className="text-xs text-zinc-500">
-                    {order.rejected ? 'Rejected' : `Approved · slip verified`}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </motion.div>
   );
 }
@@ -680,7 +828,6 @@ export function CommerceLayer({ c }: { c: Commerce }) {
             {c.view === 'success' && <SuccessView c={c} />}
             {c.view === 'account' && <AccountView c={c} />}
             {c.view === 'tracking' && <TrackingView c={c} />}
-            {c.view === 'admin' && <AdminView c={c} />}
           </AnimatePresence>
         </motion.div>
       )}

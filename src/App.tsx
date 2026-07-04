@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useCommerce, CommerceLayer, UNIT_PRICE } from './commerce';
-
-// ---- Catalog model: Category -> Design -> Color ----
-type ColorVariant = { name: string; hex: string; border?: boolean; model?: string; item?: string };
-type Design = { id: string; name: string; model: string; item: string; colors: ColorVariant[] };
-type Category = { id: string; name: string; designs: Design[] };
+import { fetchCatalog, type Category, type Design, type ColorVariant } from './lib/catalog';
 
 // Shared palette. `model`/`item` per color are left undefined until real per-color art
 // is supplied; rendering falls back to the design's base image (+ a CSS tint placeholder).
@@ -42,7 +38,7 @@ const tee = (slug: 'DesignOne' | 'DesignTwo', name: string): Design => {
   };
 };
 
-const CATEGORIES: Category[] = [
+const FALLBACK_CATEGORIES: Category[] = [
   {
     id: 'tees', name: 'T-Shirts',
     designs: [
@@ -115,7 +111,14 @@ export default function App() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const galleryIndexRef = useRef(0);
 
-  const category = CATEGORIES[categoryIndex];
+  // Live catalog from Supabase; seeded with the bundled fallback so the site
+  // renders instantly and still works when Supabase isn't configured.
+  const [categories, setCategories] = useState<Category[]>(FALLBACK_CATEGORIES);
+  useEffect(() => {
+    fetchCatalog().then(cats => { if (cats.length) setCategories(cats); }).catch(() => {});
+  }, []);
+
+  const category = categories[categoryIndex] ?? categories[0];
   const colors = category.designs[0].colors;             // color set is consistent within a category
   const colorIndex = Math.min(selectedColor, colors.length - 1);
   const colorName = colors[colorIndex].name;
@@ -128,6 +131,13 @@ export default function App() {
   const design = designsList[designAt];
   const color = design.colors.find(c => c.name === colorName) ?? design.colors[0];
   const itemSrc = color.item ?? design.item;        // mockup (flat) in the current color
+  const unitPrice = design.price ?? UNIT_PRICE;     // live DB price; constant for the bundled fallback
+  // Per-size stock for the active color. `stock` is undefined for the bundled
+  // fallback catalog, in which case every size is treated as available.
+  const sizeInStock = (sz: string) => {
+    const st = color.stock;
+    return !st || (st[sz] ?? 0) > 0;
+  };
   const activeDesignIndex = designAt;
   const galleryLenRef = useRef(designsList.length);
   galleryLenRef.current = designsList.length;
@@ -145,7 +155,7 @@ export default function App() {
 
   const selectCategory = (i: number) => {
     if (i === categoryIndex) return;
-    const newColors = CATEGORIES[i].designs[0].colors;
+    const newColors = categories[i].designs[0].colors;
     const keep = newColors.findIndex(c => c.name === colorName); // preserve color by name across categories
     setCategoryIndex(i);
     setGalleryIndex(0);
@@ -187,7 +197,7 @@ export default function App() {
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase();
     const results: { categoryIndex: number, designIndex: number, category: Category, design: Design }[] = [];
-    CATEGORIES.forEach((cat, cIdx) => {
+    categories.forEach((cat, cIdx) => {
       cat.designs.forEach((des, dIdx) => {
         if (des.name.toLowerCase().includes(query) || cat.name.toLowerCase().includes(query)) {
           results.push({ categoryIndex: cIdx, designIndex: dIdx, category: cat, design: des });
@@ -195,7 +205,7 @@ export default function App() {
       });
     });
     return results;
-  }, [searchQuery]);
+  }, [searchQuery, categories]);
 
   const [addedToast, setAddedToast] = useState<string | null>(null);
   const showToast = (msg: string) => {
@@ -631,7 +641,7 @@ export default function App() {
 
                     {/* Category chips — icon only, expand on hover to show label */}
                     <div className="hidden md:flex gap-2 mb-6 pointer-events-auto" style={{ maxWidth: '280px' }}>
-                      {CATEGORIES.map((cat, i) => (
+                      {categories.map((cat, i) => (
                         <button
                           key={cat.id}
                           onClick={() => selectCategory(i)}
@@ -710,7 +720,7 @@ export default function App() {
 
                     {/* Mobile category pills — small, no background, sits above the look info */}
                     <div className="flex md:hidden items-center gap-4 mb-4 pointer-events-auto">
-                      {CATEGORIES.map((cat, i) => (
+                      {categories.map((cat, i) => (
                         <button
                           key={cat.id}
                           onClick={() => selectCategory(i)}
@@ -1010,17 +1020,24 @@ export default function App() {
                   <span className="text-xs text-zinc-500">True to size · model wears M</span>
                 </div>
                 <div className="flex gap-2.5">
-                  {['S', 'M', 'L', 'XL'].map(size => (
-                    <button
-                      key={size}
-                      onClick={() => setDetailSize(size)}
-                      className={`flex-1 h-12 rounded-xl border flex items-center justify-center text-sm font-bold transition-all ${detailSize === size
-                        ? 'border-orange-500 bg-orange-500 text-black shadow-[0_4px_16px_rgba(234,138,40,0.35)]'
-                        : 'border-zinc-600 text-zinc-300 hover:border-orange-500 hover:text-orange-400'}`}
-                    >
-                      {size}
-                    </button>
-                  ))}
+                  {['S', 'M', 'L', 'XL'].map(size => {
+                    const oos = !sizeInStock(size);
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => { if (!oos) setDetailSize(size); }}
+                        disabled={oos}
+                        title={oos ? 'Out of stock' : undefined}
+                        className={`flex-1 h-12 rounded-xl border flex items-center justify-center text-sm font-bold transition-all ${oos
+                          ? 'border-zinc-800 text-zinc-600 line-through cursor-not-allowed'
+                          : detailSize === size
+                            ? 'border-orange-500 bg-orange-500 text-black shadow-[0_4px_16px_rgba(234,138,40,0.35)]'
+                            : 'border-zinc-600 text-zinc-300 hover:border-orange-500 hover:text-orange-400'}`}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1039,12 +1056,12 @@ export default function App() {
             <div className="shrink-0 border-t border-white/10 bg-black/85 backdrop-blur-xl px-6 pt-4 md:px-16 md:pb-8" style={{ paddingBottom: 'calc(1.1rem + env(safe-area-inset-bottom))' }}>
               <div className="flex items-end justify-between mb-3">
                 <div>
-                  <div className="text-2xl md:text-3xl font-bold leading-none">{`$${(UNIT_PRICE * detailQty).toFixed(2)}`}</div>
-                  <div className="text-[11px] text-zinc-400 mt-1">{detailQty} × ${UNIT_PRICE.toFixed(2)} · {color.name} / {detailSize}</div>
+                  <div className="text-2xl md:text-3xl font-bold leading-none">{`$${(unitPrice * detailQty).toFixed(2)}`}</div>
+                  <div className="text-[11px] text-zinc-400 mt-1">{detailQty} × ${unitPrice.toFixed(2)} · {color.name} / {detailSize}</div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  In stock
+                <div className={`flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${sizeInStock(detailSize) ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${sizeInStock(detailSize) ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                  {sizeInStock(detailSize) ? 'In stock' : 'Out of stock'}
                 </div>
               </div>
               <div className="flex gap-2.5">
@@ -1056,14 +1073,15 @@ export default function App() {
                       image: itemSrc,
                       size: detailSize,
                       color: color.name,
-                      price: UNIT_PRICE,
+                      price: unitPrice,
                       qty: detailQty,
                     });
                     setDetailQty(1);
                     setShowDetails(false);
                     commerce.openCart();
                   }}
-                  className="flex-1 flex items-center justify-center gap-2 bg-white/10 border border-white/20 text-white py-4 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-white hover:text-black transition-colors">
+                  disabled={!sizeInStock(detailSize)}
+                  className="flex-1 flex items-center justify-center gap-2 bg-white/10 border border-white/20 text-white py-4 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-white hover:text-black transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10 disabled:hover:text-white">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
                   Add
                 </button>
@@ -1075,15 +1093,16 @@ export default function App() {
                       image: itemSrc,
                       size: detailSize,
                       color: color.name,
-                      price: UNIT_PRICE,
+                      price: unitPrice,
                       qty: detailQty,
                     });
                     setDetailQty(1);
                     setShowDetails(false);
                     commerce.setView('checkout');
                   }}
-                  className="flex-[1.6] flex items-center justify-center gap-2 bg-orange-500 text-white py-4 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-orange-400 transition-colors shadow-[0_6px_24px_rgba(234,138,40,0.5)]">
-                  Buy Now
+                  disabled={!sizeInStock(detailSize)}
+                  className="flex-[1.6] flex items-center justify-center gap-2 bg-orange-500 text-white py-4 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-orange-400 transition-colors shadow-[0_6px_24px_rgba(234,138,40,0.5)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-orange-500">
+                  {sizeInStock(detailSize) ? 'Buy Now' : 'Out of stock'}
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </button>
               </div>
