@@ -2,6 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useCommerce, CommerceLayer, UNIT_PRICE } from './commerce';
 import { fetchCatalog, type Category, type Design, type ColorVariant } from './lib/catalog';
+import { supabase } from './lib/supabase';
+
+// Admin-managed hero config (settings.hero); every field optional — defaults
+// below match the built-in design. Transforms are per device; legacy configs
+// stored a single scale/x/y at the top level and apply to both.
+type HeroXform = { scale?: number; x?: number; y?: number };
+type HeroCfg = {
+  image?: string; title1?: string; title2?: string; tagline?: string;
+  desktop?: HeroXform; mobile?: HeroXform;
+} & HeroXform;
 
 // Shared palette. `model`/`item` per color are left undefined until real per-color art
 // is supplied; rendering falls back to the design's base image (+ a CSS tint placeholder).
@@ -116,6 +126,15 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>(FALLBACK_CATEGORIES);
   useEffect(() => {
     fetchCatalog().then(cats => { if (cats.length) setCategories(cats); }).catch(() => {});
+  }, []);
+
+  // Admin-managed hero (image / transform / headline) from settings.
+  const [hero, setHero] = useState<HeroCfg>({});
+  useEffect(() => {
+    supabase?.from('settings').select('hero').eq('id', 1).maybeSingle().then(({ data }) => {
+      const h = (data as any)?.hero;
+      if (h) setHero(h as HeroCfg);
+    });
   }, []);
 
   const category = categories[categoryIndex] ?? categories[0];
@@ -552,17 +571,33 @@ export default function App() {
             {/* Title — left column on desktop, bottom overlay on mobile (kept first so desktop flex puts it on the left) */}
             <div className="absolute inset-x-0 bottom-20 px-8 pointer-events-auto z-20 md:static md:w-1/2 md:px-0 md:bottom-auto md:flex md:flex-col md:justify-center md:h-full">
               <h1 className="text-7xl md:text-8xl lg:text-[10rem] leading-[0.85] tracking-tighter font-montserrat flex flex-col">
-                <span className="font-light">Melelo</span>
-                <span className="font-extrabold">Brands</span>
+                <span className="font-light">{hero.title1 ?? 'Melelo'}</span>
+                <span className="font-extrabold">{hero.title2 ?? 'Brands'}</span>
               </h1>
               <p className="mt-6 md:mt-8 text-zinc-300 max-w-md text-base md:text-lg tracking-wide uppercase font-medium">
-                Chaotic authenticity.
+                {hero.tagline ?? 'Chaotic authenticity.'}
               </p>
             </div>
 
             {/* Model — centered & dominant on mobile, right column on desktop */}
             <div className="absolute inset-0 flex items-center justify-center z-10 md:static md:w-1/2 md:h-full md:justify-end md:items-end">
-              <img src="/models/hero_model.png" className="w-full h-full object-contain object-center drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)] scale-[3.2] translate-y-6 md:object-bottom md:origin-bottom md:scale-[2.5] md:-translate-x-24 md:translate-y-12" />
+              {/* Wrapper applies the admin-managed offset/scale ON TOP of the
+                  responsive base transforms on the img (nested transforms compose).
+                  Desktop and mobile each use their own transform. */}
+              {(() => {
+                const xf = (isMobile ? hero.mobile : hero.desktop) ?? hero;
+                const s = xf.scale ?? 1, x = xf.x ?? 0, y = xf.y ?? 0;
+                return (
+              <div
+                className="w-full h-full will-change-transform"
+                style={s !== 1 || x !== 0 || y !== 0
+                  ? { transform: `translate(${x}px, ${y}px) scale(${s})` }
+                  : undefined}
+              >
+                <img src={hero.image ?? '/models/hero_model.png'} className="w-full h-full object-contain object-center drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)] scale-[3.2] translate-y-6 md:object-bottom md:origin-bottom md:scale-[2.5] md:-translate-x-24 md:translate-y-12" />
+              </div>
+                );
+              })()}
             </div>
 
             {/* Mobile: tap or swipe up to enter the collection */}

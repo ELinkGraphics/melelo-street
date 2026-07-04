@@ -11,6 +11,7 @@ import { CustomersPage } from './customers';
 import { DiscountsPage } from './discounts';
 import { ReportsPage } from './reports';
 import { SettingsPage } from './settings';
+import { StorefrontPage } from './storefront';
 
 type AuthState = {
   status: 'loading' | 'signedout' | 'signedin';
@@ -64,6 +65,7 @@ export default function AdminApp() {
         <Route path="customers" element={<CustomersPage />} />
         <Route path="discounts" element={<DiscountsPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="storefront" element={<StorefrontPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Overview />} />
       </Route>
