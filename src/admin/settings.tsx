@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound } from 'lucide-react';
+import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
 import { PageScaffold } from './ui';
 
@@ -14,6 +14,9 @@ type SettingsForm = {
   free_ship_threshold: string; // keep as string for optional field UX
   currency: string;
   chapa_enabled: boolean;
+  email_enabled: boolean;
+  email_from: string;
+  site_url: string;
 };
 
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
@@ -39,6 +42,10 @@ export function SettingsPage() {
         free_ship_threshold: s?.free_ship_threshold != null ? String(s.free_ship_threshold) : '',
         currency: s?.currency ?? 'USD',
         chapa_enabled: Boolean(s?.chapa_enabled),
+        email_enabled: Boolean(s?.email_enabled),
+        email_from: s?.email_from ?? 'Melelo Brands <onboarding@resend.dev>',
+        // Prefill with this deployment's own origin so email links work out of the box.
+        site_url: s?.site_url ?? window.location.origin,
       });
     });
   }, []);
@@ -61,6 +68,21 @@ export function SettingsPage() {
     setTogglingChapa(false);
   };
 
+  // Email notifications switch — same instant-save pattern as Chapa.
+  const [togglingEmail, setTogglingEmail] = useState(false);
+  const toggleEmail = async () => {
+    if (!form || togglingEmail) return;
+    const next = !form.email_enabled;
+    setTogglingEmail(true); setErr(null);
+    setForm(f => f ? { ...f, email_enabled: next } : f);
+    const { error } = await requireSupabase().from('settings').update({ email_enabled: next }).eq('id', 1);
+    if (error) {
+      setForm(f => f ? { ...f, email_enabled: !next } : f); // revert
+      setErr(`Could not update the email toggle: ${error.message}`);
+    }
+    setTogglingEmail(false);
+  };
+
   const save = async () => {
     if (!form) return;
     setBusy(true); setErr(null); setSaved(false);
@@ -75,6 +97,9 @@ export function SettingsPage() {
         free_ship_threshold: form.free_ship_threshold.trim() === '' ? null : Number(form.free_ship_threshold),
         currency: form.currency.trim() || 'USD',
         chapa_enabled: form.chapa_enabled,
+        email_enabled: form.email_enabled,
+        email_from: form.email_from.trim() || null,
+        site_url: form.site_url.trim() || null,
       });
       if (error) throw error;
       setSaved(true);
@@ -187,9 +212,107 @@ export function SettingsPage() {
             </div>
             <ChapaKeyManager />
           </section>
+
+          {/* Email notifications (Resend) */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Mail size={15} /> Email notifications</h3>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Order receipt at purchase plus an email on every tracking change. New-order alerts go to the
+                  <span className="text-zinc-300"> contact email</span> in the Store card. The switch applies instantly.
+                </p>
+              </div>
+              {/* Toggle — self-saving */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.email_enabled}
+                disabled={togglingEmail}
+                onClick={toggleEmail}
+                className={`relative shrink-0 w-14 h-8 rounded-full transition-colors disabled:opacity-60 ${form.email_enabled ? 'bg-green-500' : 'bg-white/15'}`}
+              >
+                <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${form.email_enabled ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className={`font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full ${form.email_enabled ? 'bg-green-500/15 text-green-400' : 'bg-white/10 text-zinc-400'}`}>
+                {form.email_enabled ? 'Sending' : 'Off'}
+              </span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-3xl">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">From address (save with Save)</label>
+                <input className={input} value={form.email_from} placeholder="Melelo Brands <orders@yourdomain.com>"
+                  onChange={e => patch({ email_from: e.target.value })} />
+                <p className="text-[11px] text-zinc-600 mt-1">Custom senders need a verified domain in Resend; until then use onboarding@resend.dev.</p>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Site URL (used for tracking links in emails)</label>
+                <input className={input} value={form.site_url} placeholder="https://your-store-url"
+                  onChange={e => patch({ site_url: e.target.value })} />
+              </div>
+            </div>
+            <ResendKeyManager />
+          </section>
         </div>
       )}
     </PageScaffold>
+  );
+}
+
+// Write-only Resend API key management — stored in the private schema, never
+// readable back through the API; only a masked status is shown.
+function ResendKeyManager() {
+  const [status, setStatus] = useState<{ set: boolean; hint?: string } | null>(null);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const loadStatus = () => {
+    requireSupabase().rpc('resend_secret_status').then(({ data, error }) => {
+      if (error) setErr(error.message);
+      else setStatus(data as any);
+    });
+  };
+  useEffect(loadStatus, []);
+
+  const saveKey = async () => {
+    if (!key.trim()) return;
+    setBusy(true); setErr(null);
+    const { error } = await requireSupabase().rpc('set_resend_secret', { p_key: key.trim() });
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    setKey('');
+    loadStatus();
+  };
+
+  return (
+    <div className="border-t border-white/10 pt-4 space-y-2">
+      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-400"><KeyRound size={13} /> Resend API key</p>
+      {err && <p className="text-xs text-red-400">{err}</p>}
+      {status && (
+        <p className="text-xs text-zinc-400">
+          {status.set
+            ? <>Key configured <span className="font-mono text-zinc-300">{status.hint}</span></>
+            : 'No key configured yet — create one at resend.com → API Keys.'}
+        </p>
+      )}
+      <div className="flex gap-2 max-w-xl">
+        <input
+          type="password"
+          className="flex-1 bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500 font-mono"
+          placeholder="re_xxxxxxxxxxxxxxxx"
+          value={key}
+          onChange={e => setKey(e.target.value)}
+        />
+        <button onClick={saveKey} disabled={busy || !key.trim()}
+          className="shrink-0 inline-flex items-center gap-1.5 bg-white/10 border border-white/15 text-sm font-semibold px-4 rounded-xl hover:bg-white hover:text-black transition-colors disabled:opacity-40">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {status?.set ? 'Replace key' : 'Save key'}
+        </button>
+      </div>
+      <p className="text-[11px] text-zinc-600">Stored server-side in a private schema — never exposed to the browser or the API after saving.</p>
+    </div>
   );
 }
 

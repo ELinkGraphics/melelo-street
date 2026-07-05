@@ -248,6 +248,31 @@ export function useCommerce(): Commerce {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tracking links from notification emails: /?track=<orderId>:<token>.
+  // Works on any device — the (id, token) pair alone grants read access via
+  // get_order_by_token, so we mint a local stub and open the tracking view.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const track = params.get('track');
+    if (!track) return;
+    window.history.replaceState({}, '', window.location.pathname); // clean the URL
+    const [id, token] = track.split(':');
+    if (!id || !token) return;
+    setOrders(prev => prev.some(o => o.id === id)
+      ? prev
+      : [{ id, humanId: 'Order', token, total: 0, placedAt: Date.now(), address: '', items: [] }, ...prev]);
+    setActiveOrderId(id);
+    setView('tracking');
+    // Backfill the stub's display fields from the live order (also validates the token).
+    fetchLiveOrder({ id, token }).then(live => {
+      if (!live) return;
+      setOrders(prev => prev.map(o => o.id === id
+        ? { ...o, humanId: live.human_id, total: Number(live.total), address: live.address, placedAt: new Date(live.placed_at).getTime() }
+        : o));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return {
     cart, orders, view, setView, activeOrderId, cartCount, cartTotal,
     addToCart, updateQty, removeItem, submitOrder, lastError,
