@@ -51,6 +51,8 @@ export interface LiveOrder {
   fulfillment_status: 'pending_approval' | 'confirmed' | 'packed' | 'shipped' | 'out_for_delivery' | 'delivered' | 'cancelled';
   payment_method: PaymentMethod;
   address: string;
+  // Deadline for unpaid Chapa orders (stock is released after this); null otherwise.
+  payment_expires_at?: string | null;
   items: { name: string; image: string | null; size: string; color: string; unit_price: number; qty: number }[];
   events: { status: string; note: string | null; at: string }[];
 }
@@ -748,7 +750,31 @@ function TrackingView({ c }: { c: Commerce }) {
   const stub = c.orders.find(o => o.id === c.activeOrderId);
   const [order, setOrder] = useState<LiveOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+  const [payErr, setPayErr] = useState<string | null>(null);
   const back = c.orders.length > 0 ? () => c.setView('account') : undefined;
+
+  // Retry an unpaid Chapa payment: a fresh checkout session is issued server-side
+  // (previous attempts are re-verified first, so double charging is impossible).
+  const completePayment = async () => {
+    if (!stub || !supabase || paying) return;
+    setPaying(true); setPayErr(null);
+    try {
+      const { data, error } = await supabase.rpc('chapa_init', {
+        p_id: stub.id,
+        p_token: stub.token,
+        p_return_url: `${window.location.origin}/?chapa_order=${stub.id}`,
+      });
+      if (error) throw new Error(error.message);
+      if ((data as any)?.already_paid) return; // next poll shows Confirmed
+      const url = (data as any)?.checkout_url;
+      if (!url) throw new Error('Chapa did not return a checkout link.');
+      window.location.href = url;
+    } catch (e: any) {
+      setPayErr(e?.message ?? 'Could not start the payment. Please try again.');
+      setPaying(false);
+    }
+  };
 
   // Poll the live order every 8s while the panel is open — the admin advancing
   // fulfillment shows up here without a refresh.
@@ -791,6 +817,7 @@ function TrackingView({ c }: { c: Commerce }) {
   const idx = cancelled ? 0 : stepIndexOf(order.fulfillment_status);
   const pending = !rejected && !cancelled && order.fulfillment_status === 'pending_approval';
   const delivered = order.fulfillment_status === 'delivered';
+  const unpaidChapa = order.payment_method === 'chapa' && order.payment_status === 'pending' && !cancelled;
 
   return (
     <motion.div key="tracking" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
@@ -814,6 +841,27 @@ function TrackingView({ c }: { c: Commerce }) {
                     : `Est. delivery ${fmtDate(new Date(order.placed_at).getTime() + 3 * 86400000)}`}
           </p>
         </div>
+
+        {/* Unpaid Chapa order: nudge + one-tap retry */}
+        {unpaidChapa && (
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 mb-6">
+            <p className="text-sm font-semibold text-amber-300">Payment not completed</p>
+            <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
+              Your items are reserved{order.payment_expires_at
+                ? ` until ${new Date(order.payment_expires_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                : ''} — after that the order is cancelled and stock is released.
+            </p>
+            {payErr && <p className="text-xs text-red-400 mt-2">{payErr}</p>}
+            <button
+              onClick={completePayment}
+              disabled={paying}
+              className="mt-3 w-full flex items-center justify-center gap-2 bg-orange-500 text-black py-3 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-orange-400 transition-colors disabled:opacity-50"
+            >
+              {paying ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
+              {paying ? 'Opening Chapa…' : 'Complete payment'}
+            </button>
+          </div>
+        )}
 
         {/* Payment */}
         <div className="flex items-center gap-3 bg-white/5 rounded-2xl p-3 mb-6">

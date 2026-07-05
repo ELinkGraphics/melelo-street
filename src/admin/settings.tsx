@@ -20,6 +20,8 @@ type SettingsForm = {
   telegram_enabled: boolean;
   telegram_bot_username: string;
   telegram_admin_chat_id: string;
+  payment_reminder_minutes: number;
+  payment_expiry_hours: number;
 };
 
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
@@ -52,6 +54,8 @@ export function SettingsPage() {
         telegram_enabled: Boolean(s?.telegram_enabled),
         telegram_bot_username: s?.telegram_bot_username ?? '',
         telegram_admin_chat_id: s?.telegram_admin_chat_id ?? '',
+        payment_reminder_minutes: Number(s?.payment_reminder_minutes ?? 30),
+        payment_expiry_hours: Number(s?.payment_expiry_hours ?? 24),
       });
     });
   }, []);
@@ -124,6 +128,8 @@ export function SettingsPage() {
         telegram_enabled: form.telegram_enabled,
         telegram_bot_username: form.telegram_bot_username.trim().replace(/^@/, '') || null,
         telegram_admin_chat_id: form.telegram_admin_chat_id.trim() || null,
+        payment_reminder_minutes: Math.max(0, Math.round(form.payment_reminder_minutes) || 0),
+        payment_expiry_hours: Math.max(0, Math.round(form.payment_expiry_hours) || 0),
       });
       if (error) throw error;
       setSaved(true);
@@ -233,6 +239,20 @@ export function SettingsPage() {
               <span className={`font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full ${form.chapa_enabled ? 'bg-green-500/15 text-green-400' : 'bg-white/10 text-zinc-400'}`}>
                 {form.chapa_enabled ? 'Active at checkout' : 'Coming soon at checkout'}
               </span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-3xl">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Payment reminder after (minutes, 0 = off)</label>
+                <input className={input} type="number" min={0} step={5} value={form.payment_reminder_minutes}
+                  onChange={e => patch({ payment_reminder_minutes: Number(e.target.value) })} />
+                <p className="text-[11px] text-zinc-600 mt-1">Unpaid Chapa orders get a "complete your payment" nudge (Telegram + email) once.</p>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Cancel unpaid after (hours, 0 = never)</label>
+                <input className={input} type="number" min={0} step={1} value={form.payment_expiry_hours}
+                  onChange={e => patch({ payment_expiry_hours: Number(e.target.value) })} />
+                <p className="text-[11px] text-zinc-600 mt-1">Expired orders are cancelled automatically and their reserved stock is released.</p>
+              </div>
             </div>
             <ChapaKeyManager />
           </section>
