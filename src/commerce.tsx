@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { compressImage } from './lib/imageUpload';
+import { getTgInitData, tgUser } from './lib/telegram';
 
 // ---------------------------------------------------------------------------
 // Types & model
@@ -126,6 +127,9 @@ export interface Commerce {
   openCart: () => void;
   openAccount: () => void;
   openTracking: (orderId: string) => void;
+  // Merge externally-discovered orders (e.g. Telegram-linked history) into the
+  // local stub list; dedupes by id and persists.
+  mergeOrders: (incoming: OrderStub[]) => void;
 }
 
 export function useCommerce(): Commerce {
@@ -193,6 +197,9 @@ export function useCommerce(): Commerce {
         p_items: cart.map(i => ({ product_id: i.designId, color: i.color, size: i.size, qty: i.qty })),
         p_discount_code: discountCode?.trim() || null,
         p_payment_method: method,
+        // Inside the Telegram Mini App: link the order to the buyer's chat so
+        // status updates arrive as bot DMs (verified server-side).
+        p_tg_init: getTgInitData(),
       });
       if (error) throw new Error(error.message);
 
@@ -273,9 +280,17 @@ export function useCommerce(): Commerce {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const mergeOrders: Commerce['mergeOrders'] = (incoming) => {
+    setOrders(prev => {
+      const known = new Set(prev.map(o => o.id));
+      const add = incoming.filter(o => !known.has(o.id));
+      return add.length ? [...prev, ...add].sort((a, b) => b.placedAt - a.placedAt) : prev;
+    });
+  };
+
   return {
     cart, orders, view, setView, activeOrderId, cartCount, cartTotal,
-    addToCart, updateQty, removeItem, submitOrder, lastError,
+    addToCart, updateQty, removeItem, submitOrder, lastError, mergeOrders,
     openCart: () => setView('cart'),
     openAccount: () => setView('account'),
     openTracking: (orderId) => { setActiveOrderId(orderId); setView('tracking'); },
@@ -398,6 +413,16 @@ function CheckoutView({ c }: { c: Commerce }) {
   const [ship, setShip] = useState<{ flat: number; threshold: number | null }>({ flat: 0, threshold: null });
   const [email, setEmail] = useState('');
   const [chapaEnabled, setChapaEnabled] = useState(false);
+  const inTelegram = Boolean(getTgInitData());
+
+  // Telegram Mini App nicety: prefill the shopper's name from their profile.
+  useEffect(() => {
+    const u = tgUser();
+    if (u && !name.trim()) {
+      setName([u.first_name, u.last_name].filter(Boolean).join(' '));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Discount code entry — validated server-side via the validate_discount RPC.
   const [code, setCode] = useState('');
@@ -477,6 +502,12 @@ function CheckoutView({ c }: { c: Commerce }) {
         </section>
 
         <section className="space-y-3">
+          {inTelegram && (
+            <p className="text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/25 rounded-xl px-3 py-2">
+              📲 You're shopping in Telegram — order updates will arrive right in this chat.
+            </p>
+          )}
+
           <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400 flex items-center gap-2"><Wallet size={14} /> Payment method</h4>
 
           {/* Chapa — live when the admin toggle is on, otherwise "Coming soon" */}
@@ -656,6 +687,27 @@ function AccountView({ c }: { c: Commerce }) {
     })();
     return () => { alive = false; };
   }, [c.orders]);
+
+  // Inside Telegram: pull the account's full order history (any device) and
+  // merge it into the local list.
+  useEffect(() => {
+    const init = getTgInitData();
+    if (!init || !supabase) return;
+    supabase.rpc('get_telegram_orders', { p_init: init }).then(({ data }) => {
+      const rows = (data as any[] | null) ?? [];
+      if (!rows.length) return;
+      c.mergeOrders(rows.map(r => ({
+        id: r.id,
+        humanId: r.human_id,
+        token: r.token,
+        total: Number(r.total),
+        placedAt: new Date(r.placed_at).getTime(),
+        address: r.address ?? '',
+        items: [],
+      })));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <motion.div key="account" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">

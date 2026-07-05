@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail } from 'lucide-react';
+import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail, Send } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
 import { PageScaffold } from './ui';
 
@@ -17,6 +17,9 @@ type SettingsForm = {
   email_enabled: boolean;
   email_from: string;
   site_url: string;
+  telegram_enabled: boolean;
+  telegram_bot_username: string;
+  telegram_admin_chat_id: string;
 };
 
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
@@ -46,6 +49,9 @@ export function SettingsPage() {
         email_from: s?.email_from ?? 'Melelo Brands <onboarding@resend.dev>',
         // Prefill with this deployment's own origin so email links work out of the box.
         site_url: s?.site_url ?? window.location.origin,
+        telegram_enabled: Boolean(s?.telegram_enabled),
+        telegram_bot_username: s?.telegram_bot_username ?? '',
+        telegram_admin_chat_id: s?.telegram_admin_chat_id ?? '',
       });
     });
   }, []);
@@ -66,6 +72,21 @@ export function SettingsPage() {
       setErr(`Could not update the Chapa toggle: ${error.message}`);
     }
     setTogglingChapa(false);
+  };
+
+  // Telegram switch — same instant-save pattern as Chapa.
+  const [togglingTg, setTogglingTg] = useState(false);
+  const toggleTelegram = async () => {
+    if (!form || togglingTg) return;
+    const next = !form.telegram_enabled;
+    setTogglingTg(true); setErr(null);
+    setForm(f => f ? { ...f, telegram_enabled: next } : f);
+    const { error } = await requireSupabase().from('settings').update({ telegram_enabled: next }).eq('id', 1);
+    if (error) {
+      setForm(f => f ? { ...f, telegram_enabled: !next } : f); // revert
+      setErr(`Could not update the Telegram toggle: ${error.message}`);
+    }
+    setTogglingTg(false);
   };
 
   // Email notifications switch — same instant-save pattern as Chapa.
@@ -100,6 +121,9 @@ export function SettingsPage() {
         email_enabled: form.email_enabled,
         email_from: form.email_from.trim() || null,
         site_url: form.site_url.trim() || null,
+        telegram_enabled: form.telegram_enabled,
+        telegram_bot_username: form.telegram_bot_username.trim().replace(/^@/, '') || null,
+        telegram_admin_chat_id: form.telegram_admin_chat_id.trim() || null,
       });
       if (error) throw error;
       setSaved(true);
@@ -255,9 +279,115 @@ export function SettingsPage() {
             </div>
             <ResendKeyManager />
           </section>
+
+          {/* Telegram bot & Mini App */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Send size={15} /> Telegram</h3>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Mini App shop, order updates as bot DMs, customer messages in the Messages page,
+                  and a new-order alert to your own chat. The switch applies instantly.
+                </p>
+              </div>
+              {/* Toggle — self-saving */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.telegram_enabled}
+                disabled={togglingTg}
+                onClick={toggleTelegram}
+                className={`relative shrink-0 w-14 h-8 rounded-full transition-colors disabled:opacity-60 ${form.telegram_enabled ? 'bg-green-500' : 'bg-white/15'}`}
+              >
+                <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${form.telegram_enabled ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className={`font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full ${form.telegram_enabled ? 'bg-green-500/15 text-green-400' : 'bg-white/10 text-zinc-400'}`}>
+                {form.telegram_enabled ? 'Bot active' : 'Off'}
+              </span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-3xl">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Bot username (save with Save)</label>
+                <input className={input} value={form.telegram_bot_username} placeholder="MeleloShopBot"
+                  onChange={e => patch({ telegram_bot_username: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Your admin chat id (new-order alerts)</label>
+                <input className={input} value={form.telegram_admin_chat_id} placeholder="send /id to the bot to get it"
+                  onChange={e => patch({ telegram_admin_chat_id: e.target.value })} />
+              </div>
+            </div>
+            <TelegramTokenManager />
+            <div className="border-t border-white/10 pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Setup checklist</p>
+              <ol className="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside">
+                <li>In Telegram, message <span className="text-zinc-200">@BotFather</span> → <span className="font-mono">/newbot</span> → copy the token here.</li>
+                <li>BotFather → <span className="font-mono">/mybots</span> → your bot → <span className="text-zinc-200">Bot Settings → Menu Button</span> → set it to your store URL (the Site URL above).</li>
+                <li>Toggle Telegram on, then send <span className="font-mono">/start</span> to your bot — the welcome + shop button should arrive within ~10s.</li>
+                <li>Send <span className="font-mono">/id</span> to the bot and paste the number into "admin chat id" for new-order alerts.</li>
+                <li>Never configure a webhook for this bot — message polling would stop working.</li>
+              </ol>
+            </div>
+          </section>
         </div>
       )}
     </PageScaffold>
+  );
+}
+
+// Write-only Telegram bot token management (private schema, masked status).
+function TelegramTokenManager() {
+  const [status, setStatus] = useState<{ set: boolean; hint?: string } | null>(null);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const loadStatus = () => {
+    requireSupabase().rpc('telegram_secret_status').then(({ data, error }) => {
+      if (error) setErr(error.message);
+      else setStatus(data as any);
+    });
+  };
+  useEffect(loadStatus, []);
+
+  const saveKey = async () => {
+    if (!key.trim()) return;
+    setBusy(true); setErr(null);
+    const { error } = await requireSupabase().rpc('set_telegram_secret', { p_key: key.trim() });
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    setKey('');
+    loadStatus();
+  };
+
+  return (
+    <div className="border-t border-white/10 pt-4 space-y-2">
+      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-400"><KeyRound size={13} /> Bot token</p>
+      {err && <p className="text-xs text-red-400">{err}</p>}
+      {status && (
+        <p className="text-xs text-zinc-400">
+          {status.set
+            ? <>Token configured <span className="font-mono text-zinc-300">{status.hint}</span></>
+            : 'No token yet — get one from @BotFather.'}
+        </p>
+      )}
+      <div className="flex gap-2 max-w-xl">
+        <input
+          type="password"
+          className="flex-1 bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500 font-mono"
+          placeholder="123456789:AAxxxxxxxxxxxxxxxxxxxxxxx"
+          value={key}
+          onChange={e => setKey(e.target.value)}
+        />
+        <button onClick={saveKey} disabled={busy || !key.trim()}
+          className="shrink-0 inline-flex items-center gap-1.5 bg-white/10 border border-white/15 text-sm font-semibold px-4 rounded-xl hover:bg-white hover:text-black transition-colors disabled:opacity-40">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {status?.set ? 'Replace token' : 'Save token'}
+        </button>
+      </div>
+      <p className="text-[11px] text-zinc-600">Stored server-side in a private schema — never exposed to the browser or the API after saving.</p>
+    </div>
   );
 }
 

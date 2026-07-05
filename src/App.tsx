@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useCommerce, CommerceLayer, UNIT_PRICE } from './commerce';
 import { fetchCatalog, type Category, type Design, type ColorVariant } from './lib/catalog';
 import { supabase } from './lib/supabase';
+import { initTelegram } from './lib/telegram';
 
 // Admin-managed hero config (settings.hero); every field optional — defaults
 // below match the built-in design. Transforms are per device; legacy configs
@@ -146,6 +147,9 @@ export default function App() {
   useEffect(() => {
     fetchCatalog().then(cats => { if (cats.length) setCategories(cats); }).catch(() => {});
   }, []);
+
+  // Telegram Mini App: ready/expand when running inside Telegram (no-op otherwise).
+  useEffect(() => { initTelegram(); }, []);
 
   // Admin-managed hero (image / transform / headline) from settings.
   const [hero, setHero] = useState<HeroCfg>({});
