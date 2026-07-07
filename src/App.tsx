@@ -1142,25 +1142,6 @@ export default function App() {
             <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter mb-6">
               {design.name}
             </h2>
-            <p className="text-zinc-300 text-base md:text-lg mb-6 leading-relaxed">
-              Crafted for the modern explorer. Featuring advanced fabric technology, providing exceptional breathability and comfort without compromising on style.
-            </p>
-
-            {/* Trust signals — reduce hesitation before buying */}
-            <div className="grid grid-cols-3 gap-2 mb-7">
-              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
-                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Free shipping</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-                <span className="text-[10px] font-medium text-zinc-300 leading-tight">30-day returns</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Secure checkout</span>
-              </div>
-            </div>
 
             <div className="space-y-6">
               <div>
@@ -1214,6 +1195,22 @@ export default function App() {
                   <span className="w-10 text-center font-semibold text-lg">{detailQty}</span>
                   <button onClick={() => setDetailQty(q => Math.min(9, q + 1))} aria-label="Increase quantity" className="w-10 h-10 rounded-full flex items-center justify-center text-xl text-zinc-300 hover:bg-white/10 hover:text-white transition-colors">+</button>
                 </div>
+              </div>
+            </div>
+
+            {/* Trust signals — reduce hesitation before buying */}
+            <div className="grid grid-cols-3 gap-2 mt-8">
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Free shipping</span>
+              </div>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">30-day returns</span>
+              </div>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Secure checkout</span>
               </div>
             </div>
 
