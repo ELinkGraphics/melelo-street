@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail, Send, Star } from 'lucide-react';
+import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail, Send, Star, ScrollText } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
 import { PageScaffold } from './ui';
 
@@ -24,7 +24,16 @@ type SettingsForm = {
   payment_expiry_hours: number;
   review_reward_percent: number;
   review_reminder_days: number;
+  legal_privacy: string;
+  legal_terms: string;
+  legal_returns: string;
+  social_instagram: string;
+  social_twitter: string;
+  social_tiktok: string;
 };
+
+// The seed data used '#' placeholders — treat them as empty.
+const realUrl = (v: unknown) => (typeof v === 'string' && v.trim() && v.trim() !== '#') ? v.trim() : '';
 
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
 
@@ -60,6 +69,12 @@ export function SettingsPage() {
         payment_expiry_hours: Number(s?.payment_expiry_hours ?? 24),
         review_reward_percent: Number(s?.review_reward_percent ?? 10),
         review_reminder_days: Number(s?.review_reminder_days ?? 3),
+        legal_privacy: s?.legal?.privacy ?? '',
+        legal_terms: s?.legal?.terms ?? '',
+        legal_returns: s?.legal?.returns ?? '',
+        social_instagram: realUrl(s?.socials?.instagram),
+        social_twitter: realUrl(s?.socials?.twitter),
+        social_tiktok: realUrl(s?.socials?.tiktok),
       });
     });
   }, []);
@@ -136,6 +151,16 @@ export function SettingsPage() {
         payment_expiry_hours: Math.max(0, Math.round(form.payment_expiry_hours) || 0),
         review_reward_percent: Math.min(100, Math.max(0, Math.round(form.review_reward_percent) || 0)),
         review_reminder_days: Math.max(0, Math.round(form.review_reminder_days) || 0),
+        legal: {
+          privacy: form.legal_privacy.trim(),
+          terms: form.legal_terms.trim(),
+          returns: form.legal_returns.trim(),
+        },
+        socials: {
+          instagram: form.social_instagram.trim(),
+          twitter: form.social_twitter.trim(),
+          tiktok: form.social_tiktok.trim(),
+        },
       });
       if (error) throw error;
       setSaved(true);
@@ -182,6 +207,20 @@ export function SettingsPage() {
             <div>
               <label className="block text-xs text-zinc-500 mb-1.5">Currency code</label>
               <input className={input} value={form.currency} onChange={e => patch({ currency: e.target.value.toUpperCase() })} maxLength={3} />
+              <p className="text-[11px] text-zinc-600 mt-1">Storefront prices, emails and Chapa charges all follow this (e.g. ETB, USD).</p>
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">Instagram URL</label>
+              <input className={input} placeholder="https://instagram.com/…" value={form.social_instagram} onChange={e => patch({ social_instagram: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">Twitter / X URL</label>
+              <input className={input} placeholder="https://x.com/…" value={form.social_twitter} onChange={e => patch({ social_twitter: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">TikTok URL</label>
+              <input className={input} placeholder="https://tiktok.com/@…" value={form.social_tiktok} onChange={e => patch({ social_tiktok: e.target.value })} />
+              <p className="text-[11px] text-zinc-600 mt-1">Shown in the storefront's About panel; leave empty to hide a link.</p>
             </div>
           </section>
 
@@ -379,6 +418,34 @@ export function SettingsPage() {
                 <input className={input} type="number" min={0} step={1} value={form.review_reminder_days}
                   onChange={e => patch({ review_reminder_days: Number(e.target.value) })} />
                 <p className="text-[11px] text-zinc-600 mt-1">Delivered orders with no review get one "how's the fit?" nudge (Telegram + email).</p>
+              </div>
+            </div>
+          </section>
+
+          {/* Legal pages */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><ScrollText size={15} /> Legal pages</h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                Shown in the storefront's About panel (and the Returns badge on products). Payment providers
+                and social shops require these — replace the stubs with your real policies. Save with Save.
+              </p>
+            </div>
+            <div className="grid gap-3 max-w-3xl">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Privacy Policy</label>
+                <textarea className={`${input} resize-y`} rows={4} value={form.legal_privacy}
+                  onChange={e => patch({ legal_privacy: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Terms of Service</label>
+                <textarea className={`${input} resize-y`} rows={4} value={form.legal_terms}
+                  onChange={e => patch({ legal_terms: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Returns &amp; Shipping</label>
+                <textarea className={`${input} resize-y`} rows={4} value={form.legal_returns}
+                  onChange={e => patch({ legal_returns: e.target.value })} />
               </div>
             </div>
           </section>

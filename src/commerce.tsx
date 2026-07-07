@@ -9,6 +9,7 @@ import {
 import { supabase } from './lib/supabase';
 import { compressImage, IMMUTABLE_CACHE } from './lib/imageUpload';
 import { getTgInitData, tgUser } from './lib/telegram';
+import { fmtMoney, setCurrencyCode } from './lib/currency';
 
 // ---------------------------------------------------------------------------
 // Types & model
@@ -96,9 +97,6 @@ const STATUS_STEPS = [
 const stepIndexOf = (status: LiveOrder['fulfillment_status']) =>
   Math.max(0, STATUS_STEPS.findIndex(s => s.key === status));
 
-function fmtMoney(n: number) {
-  return `$${n.toFixed(2)}`;
-}
 
 function fmtDate(ms: number) {
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -453,12 +451,13 @@ function CheckoutView({ c }: { c: Commerce }) {
 
   // Live bank details + shipping rules + Chapa availability from settings (public read).
   useEffect(() => {
-    supabase?.from('settings').select('bank_details,shipping_flat,free_ship_threshold,chapa_enabled').eq('id', 1).maybeSingle().then(({ data }) => {
+    supabase?.from('settings').select('bank_details,shipping_flat,free_ship_threshold,chapa_enabled,currency').eq('id', 1).maybeSingle().then(({ data }) => {
       const s = data as any;
       const bd = s?.bank_details;
       if (bd?.bank && bd?.name && bd?.account) setBank(bd);
       if (s) setShip({ flat: Number(s.shipping_flat ?? 0), threshold: s.free_ship_threshold != null ? Number(s.free_ship_threshold) : null });
       setChapaEnabled(Boolean(s?.chapa_enabled));
+      if (s?.currency) setCurrencyCode(s.currency);
     });
   }, []);
 

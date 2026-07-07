@@ -13,6 +13,7 @@ export type ColorVariant = {
 };
 export type Design = {
   id: string; name: string; model: string; item: string; colors: ColorVariant[]; price?: number;
+  bestseller?: boolean;
   // Live review aggregates (null/0 until the first review is approved).
   rating?: number | null; reviewCount?: number;
 };
@@ -94,6 +95,7 @@ export async function fetchCatalog(): Promise<Category[]> {
         return {
           id: p.id, name: p.name, model: baseModel ?? '', item: baseItem ?? '', colors,
           price: Number(p.base_price),
+          bestseller: Boolean(p.is_bestseller),
           rating: p.rating != null ? Number(p.rating) : null,
           reviewCount: Number(p.review_count ?? 0),
         };

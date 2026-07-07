@@ -4,6 +4,7 @@ import { useCommerce, CommerceLayer, UNIT_PRICE } from './commerce';
 import { fetchCatalog, type Category, type Design, type ColorVariant } from './lib/catalog';
 import { supabase } from './lib/supabase';
 import { initTelegram } from './lib/telegram';
+import { fmtMoney, moneySymbol, setCurrencyCode } from './lib/currency';
 
 // Admin-managed hero config (settings.hero); every field optional — defaults
 // below match the built-in design. Transforms are per device; legacy configs
@@ -13,6 +14,52 @@ type HeroCfg = {
   image?: string; title1?: string; title2?: string; tagline?: string;
   desktop?: HeroXform; mobile?: HeroXform;
 } & HeroXform;
+
+// Store info surfaced on the storefront (About panel, badges, legal pages) —
+// all admin-managed via Settings.
+type LegalKind = 'privacy' | 'terms' | 'returns';
+type StoreInfo = {
+  name?: string; email?: string; phone?: string;
+  socials?: { instagram?: string; twitter?: string; tiktok?: string };
+  legal?: Partial<Record<LegalKind, string>>;
+  shippingFlat?: number; freeShipThreshold?: number | null;
+  telegramBot?: string;
+};
+
+// Fallback policy text, shown until real policies are written in Admin → Settings.
+const LEGAL_TITLES: Record<LegalKind, string> = {
+  privacy: 'Privacy Policy', terms: 'Terms of Service', returns: 'Returns & Shipping',
+};
+const DEFAULT_LEGAL: Record<LegalKind, string> = {
+  privacy:
+    'We collect only what we need to fulfil your order: your name, delivery address, phone number and email. '
+    + 'Payment details are handled by our payment providers and never stored on our servers. '
+    + 'We use your contact details to send order confirmations and delivery updates, and we never sell or share your data with third parties for marketing.',
+  terms:
+    'All orders are subject to availability and confirmation of payment. Prices are shown in the store currency at checkout. '
+    + 'An order is confirmed once payment is verified; you will receive a confirmation with a tracking link by email or Telegram. '
+    + 'We reserve the right to cancel orders that cannot be fulfilled — any payment received for a cancelled order is refunded in full.',
+  returns:
+    'If something is wrong with your order — wrong size, wrong item or a defect — contact us within 7 days of delivery and we will make it right with an exchange or refund. '
+    + 'Items must be unworn and in their original condition. Delivery times and fees are shown at checkout before you pay.',
+};
+
+function LegalModal({ kind, text, onClose }: { kind: LegalKind; text: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 pointer-events-auto">
+      <div className="absolute inset-0 bg-black/80" onClick={onClose} />
+      <div className="relative w-full max-w-lg max-h-[80dvh] overflow-y-auto bg-zinc-950 border border-white/15 rounded-2xl p-6 md:p-8">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold uppercase tracking-tight">{LEGAL_TITLES[kind]}</h3>
+          <button onClick={onClose} aria-label="Close" className="text-white/50 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+          </button>
+        </div>
+        <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{text}</p>
+      </div>
+    </div>
+  );
+}
 
 // Shared palette. `model`/`item` per color are left undefined until real per-color art
 // is supplied; rendering falls back to the design's base image (+ a CSS tint placeholder).
@@ -250,13 +297,30 @@ export default function App() {
   // Telegram Mini App: ready/expand when running inside Telegram (no-op otherwise).
   useEffect(() => { initTelegram(); }, []);
 
-  // Admin-managed hero (image / transform / headline) from settings.
+  // Admin-managed hero + store info (contact, socials, legal, currency,
+  // shipping) — one settings fetch feeds the hero, the About panel, the
+  // trust badges and the money formatter.
   const [hero, setHero] = useState<HeroCfg>({});
+  const [store, setStore] = useState<StoreInfo>({});
   useEffect(() => {
-    supabase?.from('settings').select('hero').eq('id', 1).maybeSingle().then(({ data }) => {
-      const h = (data as any)?.hero;
-      if (h) setHero(h as HeroCfg);
-    });
+    supabase?.from('settings')
+      .select('hero,store_name,contact_email,contact_phone,socials,legal,currency,shipping_flat,free_ship_threshold,telegram_bot_username')
+      .eq('id', 1).maybeSingle().then(({ data }) => {
+        const s = data as any;
+        if (!s) return;
+        if (s.hero) setHero(s.hero as HeroCfg);
+        if (s.currency) setCurrencyCode(s.currency);
+        setStore({
+          name: s.store_name ?? undefined,
+          email: s.contact_email ?? undefined,
+          phone: s.contact_phone ?? undefined,
+          socials: s.socials ?? undefined,
+          legal: s.legal ?? undefined,
+          shippingFlat: s.shipping_flat != null ? Number(s.shipping_flat) : undefined,
+          freeShipThreshold: s.free_ship_threshold != null ? Number(s.free_ship_threshold) : null,
+          telegramBot: s.telegram_bot_username ?? undefined,
+        });
+      });
   }, []);
 
   const category = categories[categoryIndex] ?? categories[0];
@@ -322,6 +386,7 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const aboutOpenRef = useRef(false);
   const setAboutOpenWrapped = (val: boolean) => { aboutOpenRef.current = val; setAboutOpen(val); };
+  const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
 
   // Search
   const [searchOpenState, setSearchOpenState] = useState(false);
@@ -589,8 +654,7 @@ export default function App() {
 
           <div className="hidden lg:flex items-center gap-8">
             <a href="#" onClick={(e: React.MouseEvent) => { e.preventDefault(); setActiveSection('collection'); setGalleryIndex(0); }} className="text-sm font-medium tracking-widest text-white hover:text-orange-300 transition-colors uppercase">Collection</a>
-            <a href="#" className="text-sm font-medium tracking-widest text-zinc-400 hover:text-orange-300 transition-colors uppercase">Archive</a>
-            <a href="#" className="text-sm font-medium tracking-widest text-zinc-400 hover:text-orange-300 transition-colors uppercase">Editorial</a>
+            <button onClick={commerce.openAccount} className="text-sm font-medium tracking-widest text-zinc-400 hover:text-orange-300 transition-colors uppercase cursor-pointer">Track Order</button>
             <button onClick={() => setAboutOpenWrapped(true)} className="text-sm font-medium tracking-widest text-zinc-400 hover:text-orange-300 transition-colors uppercase cursor-pointer">About</button>
           </div>
         </div>
@@ -650,16 +714,13 @@ export default function App() {
               </button>
 
               <div className="flex flex-col gap-6">
-                {['Collection', 'Archive', 'Editorial'].map((link, i) => (
-                  <a
-                    key={link}
-                    href="#"
-                    onClick={(e: React.MouseEvent) => { e.preventDefault(); setMenuOpen(false); if (link === 'Collection') { setActiveSection('collection'); setGalleryIndex(0); } }}
-                    className={`text-2xl font-medium tracking-wide uppercase transition-colors ${i === 0 ? 'text-white' : 'text-zinc-400'} hover:text-orange-300`}
-                  >
-                    {link}
-                  </a>
-                ))}
+                <a
+                  href="#"
+                  onClick={(e: React.MouseEvent) => { e.preventDefault(); setMenuOpen(false); setActiveSection('collection'); setGalleryIndex(0); }}
+                  className="text-2xl font-medium tracking-wide uppercase transition-colors text-white hover:text-orange-300"
+                >
+                  Collection
+                </a>
                 <button
                   onClick={() => { setMenuOpen(false); setAboutOpenWrapped(true); }}
                   className="text-2xl font-medium tracking-wide uppercase text-zinc-400 hover:text-orange-300 transition-colors text-left"
@@ -1122,12 +1183,14 @@ export default function App() {
                 </AnimatePresence>
               </div>
 
-              {/* Bestseller badge + live social proof (hidden until real reviews exist) */}
+              {/* Bestseller badge (only when flagged in the catalog) + live social proof */}
               <div className="flex items-center justify-between mb-4">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/15 border border-orange-500/30 rounded-full px-3 py-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
-                  Bestseller
-                </span>
+                {design.bestseller ? (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/15 border border-orange-500/30 rounded-full px-3 py-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+                    Bestseller
+                  </span>
+                ) : <span />}
                 {(design.reviewCount ?? 0) > 0 && design.rating != null && (
                   <div className="flex items-center gap-1.5">
                     <RatingStars value={design.rating} size={14} />
@@ -1198,16 +1261,22 @@ export default function App() {
               </div>
             </div>
 
-            {/* Trust signals — reduce hesitation before buying */}
+            {/* Trust signals — driven by real settings so every claim is true */}
             <div className="grid grid-cols-3 gap-2 mt-8">
               <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
-                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Free shipping</span>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">
+                  {store.shippingFlat === 0
+                    ? 'Free shipping'
+                    : store.freeShipThreshold != null
+                      ? `Free over ${moneySymbol()}${store.freeShipThreshold}`
+                      : 'Nationwide delivery'}
+                </span>
               </div>
-              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
+              <button onClick={() => setLegalOpen('returns')} className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center cursor-pointer hover:border-orange-500/40 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-                <span className="text-[10px] font-medium text-zinc-300 leading-tight">30-day returns</span>
-              </div>
+                <span className="text-[10px] font-medium text-zinc-300 leading-tight">Returns policy</span>
+              </button>
               <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-3 text-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-orange-300"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
                 <span className="text-[10px] font-medium text-zinc-300 leading-tight">Secure checkout</span>
@@ -1221,8 +1290,8 @@ export default function App() {
             <div className="shrink-0 border-t border-white/10 bg-black/85 backdrop-blur-xl px-6 pt-4 md:px-16 md:pb-8" style={{ paddingBottom: 'calc(1.1rem + env(safe-area-inset-bottom))' }}>
               <div className="flex items-end justify-between mb-3">
                 <div>
-                  <div className="text-2xl md:text-3xl font-bold leading-none">{`$${(unitPrice * detailQty).toFixed(2)}`}</div>
-                  <div className="text-[11px] text-zinc-400 mt-1">{detailQty} × ${unitPrice.toFixed(2)} · {color.name} / {detailSize}</div>
+                  <div className="text-2xl md:text-3xl font-bold leading-none">{fmtMoney(unitPrice * detailQty)}</div>
+                  <div className="text-[11px] text-zinc-400 mt-1">{detailQty} × {fmtMoney(unitPrice)} · {color.name} / {detailSize}</div>
                 </div>
                 <div className={`flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${sizeInStock(detailSize) ? 'text-emerald-400' : 'text-red-400'}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${sizeInStock(detailSize) ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
@@ -1411,27 +1480,43 @@ export default function App() {
                 {/* Divider */}
                 <div className="h-px w-full bg-white/15 mb-10" />
 
-                {/* Info Grid */}
+                {/* Info Grid — contact, socials and legal all come from Settings */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-16 mb-10">
                   <div>
                     <h4 className="text-xs font-semibold tracking-[0.2em] text-white/40 uppercase mb-4">Contact</h4>
-                    <p className="text-white text-sm leading-relaxed">hello@melelobrands.com</p>
+                    {store.email && (
+                      <a href={`mailto:${store.email}`} className="block text-white text-sm leading-relaxed hover:text-orange-400 transition-colors">{store.email}</a>
+                    )}
+                    {store.phone && (
+                      <a href={`tel:${store.phone}`} className="block text-white text-sm leading-relaxed mt-1 hover:text-orange-400 transition-colors">{store.phone}</a>
+                    )}
                     <p className="text-white/60 text-sm leading-relaxed mt-1">Addis Ababa, Ethiopia</p>
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold tracking-[0.2em] text-white/40 uppercase mb-4">Follow</h4>
                     <div className="flex flex-col gap-2">
-                      <a href="#" className="text-white text-sm hover:text-orange-400 transition-colors">Instagram</a>
-                      <a href="#" className="text-white text-sm hover:text-orange-400 transition-colors">Twitter / X</a>
-                      <a href="#" className="text-white text-sm hover:text-orange-400 transition-colors">TikTok</a>
+                      {([
+                        ['Instagram', store.socials?.instagram],
+                        ['Twitter / X', store.socials?.twitter],
+                        ['TikTok', store.socials?.tiktok],
+                      ] as const).map(([label, url]) => (url && url !== '#')
+                        ? <a key={label} href={url} target="_blank" rel="noreferrer" className="text-white text-sm hover:text-orange-400 transition-colors">{label}</a>
+                        : null)}
+                      {store.telegramBot && (
+                        <a href={`https://t.me/${store.telegramBot}`} target="_blank" rel="noreferrer" className="text-white text-sm hover:text-orange-400 transition-colors">
+                          Shop on Telegram
+                        </a>
+                      )}
                     </div>
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold tracking-[0.2em] text-white/40 uppercase mb-4">Legal</h4>
                     <div className="flex flex-col gap-2">
-                      <a href="#" className="text-white text-sm hover:text-orange-400 transition-colors">Privacy Policy</a>
-                      <a href="#" className="text-white text-sm hover:text-orange-400 transition-colors">Terms of Service</a>
-                      <a href="#" className="text-white text-sm hover:text-orange-400 transition-colors">Returns &amp; Shipping</a>
+                      {(['privacy', 'terms', 'returns'] as LegalKind[]).map(kind => (
+                        <button key={kind} onClick={() => setLegalOpen(kind)} className="text-white text-sm text-left hover:text-orange-400 transition-colors cursor-pointer">
+                          {LEGAL_TITLES[kind]}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -1441,7 +1526,7 @@ export default function App() {
 
                 {/* Footer copyright */}
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                  <p className="text-white/30 text-xs tracking-widest uppercase">© 2025 Melelo Brands. All rights reserved.</p>
+                  <p className="text-white/30 text-xs tracking-widest uppercase">© {new Date().getFullYear()} {store.name ?? 'Melelo Brands'}. All rights reserved.</p>
                   <img src="/logo.webp" alt="Melelo Logo" className="h-6 opacity-30" />
                 </div>
               </div>
@@ -1449,6 +1534,15 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Legal pages (privacy / terms / returns) — content managed in Admin → Settings */}
+      {legalOpen && (
+        <LegalModal
+          kind={legalOpen}
+          text={store.legal?.[legalOpen]?.trim() || DEFAULT_LEGAL[legalOpen]}
+          onClose={() => setLegalOpen(null)}
+        />
+      )}
 
       {/* Toast Notification — shows briefly when item added to bag */}
       <AnimatePresence>
