@@ -226,7 +226,8 @@ begin
   v_code := r.reward_code;
   if v_code is null and coalesce(s.review_reward_percent, 0) > 0 then
     loop
-      v_code := 'THANKS-' || upper(encode(gen_random_bytes(3), 'hex'));
+      -- md5(random) keeps this free of pgcrypto (which lives outside our search_path).
+      v_code := 'THANKS-' || upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6));
       begin
         insert into public.discounts (code, type, value, min_subtotal, usage_limit, active)
         values (v_code, 'percent', s.review_reward_percent, 0, 1, true);
