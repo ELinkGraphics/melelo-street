@@ -12,9 +12,18 @@
     <link rel="preconnect" href="https://api.fontshare.com" />
     <link rel="preconnect" href="https://altgclsxeslluxcqybnq.supabase.co" />
 
-    <!-- The two images every first paint needs, fetched at top priority -->
-    <link rel="preload" as="image" href="/bg.webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/models/hero_model.webp" fetchpriority="high" />
+    <!-- The two images the storefront's first paint needs, fetched at top
+         priority. Added via script so /admin (which never shows them) doesn't
+         preload them — avoids wasted bandwidth + console warnings there. -->
+    <script>
+      if (!location.pathname.startsWith('/admin')) {
+        for (const href of ['/bg.webp', '/models/hero_model.webp']) {
+          const l = document.createElement('link');
+          l.rel = 'preload'; l.as = 'image'; l.href = href; l.fetchPriority = 'high';
+          document.head.appendChild(l);
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
