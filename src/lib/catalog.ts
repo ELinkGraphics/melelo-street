@@ -11,7 +11,11 @@ export type ColorVariant = {
   item?: string;
   stock?: Record<string, number>;
 };
-export type Design = { id: string; name: string; model: string; item: string; colors: ColorVariant[]; price?: number };
+export type Design = {
+  id: string; name: string; model: string; item: string; colors: ColorVariant[]; price?: number;
+  // Live review aggregates (null/0 until the first review is approved).
+  rating?: number | null; reviewCount?: number;
+};
 export type Category = { id: string; name: string; designs: Design[] };
 
 // Dark swatches get a hairline border so they read against the dark UI.
@@ -43,7 +47,7 @@ export async function fetchCatalog(): Promise<Category[]> {
   const { data, error } = await supabase
     .from('products')
     .select(`
-      id, slug, name, base_price, is_bestseller, created_at,
+      id, slug, name, base_price, is_bestseller, rating, review_count, created_at,
       category:categories!inner ( id, slug, name, sort ),
       variants:product_variants ( id, color_name, color_hex, inventory:inventory ( size, stock_qty ) ),
       images:product_images ( variant_id, view, url, sort )
@@ -87,7 +91,12 @@ export async function fetchCatalog(): Promise<Category[]> {
             stock,
           };
         });
-        return { id: p.id, name: p.name, model: baseModel ?? '', item: baseItem ?? '', colors, price: Number(p.base_price) };
+        return {
+          id: p.id, name: p.name, model: baseModel ?? '', item: baseItem ?? '', colors,
+          price: Number(p.base_price),
+          rating: p.rating != null ? Number(p.rating) : null,
+          reviewCount: Number(p.review_count ?? 0),
+        };
       }),
     }));
 

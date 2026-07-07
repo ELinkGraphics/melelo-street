@@ -132,6 +132,105 @@ function SlotImage({ slot, imgClassName, maskPosition = 'center', eager }: { slo
   return <FadeImg src={slot.src} alt={slot.label} className={imgClassName} eager={eager} />;
 }
 
+// ---------------------------------------------------------------------------
+// Reviews — live social proof in the detail panel. Only approved reviews are
+// readable (RLS), so a plain table query is safe here.
+// ---------------------------------------------------------------------------
+function RatingStars({ value, size = 14 }: { value: number; size?: number }) {
+  return (
+    <div className="flex items-center gap-0.5 text-orange-400">
+      {[1, 2, 3, 4, 5].map(n => (
+        <svg key={n} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+          fill={n <= Math.round(value) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
+          <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01z"/>
+        </svg>
+      ))}
+    </div>
+  );
+}
+
+type ProductReview = {
+  rating: number; body: string | null; photos: string[];
+  reviewer_name: string | null; created_at: string;
+};
+
+const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s);
+
+function ProductReviews({ productId }: { productId: string }) {
+  const [reviews, setReviews] = useState<ProductReview[] | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setReviews(null);
+    // Fallback (bundled) catalog has non-uuid ids — no live reviews to show.
+    if (!supabase || !isUuid(productId)) { setReviews([]); return; }
+    supabase
+      .from('reviews')
+      .select('rating,body,photos,reviewer_name,created_at')
+      .eq('product_id', productId)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => { if (alive) setReviews((data as ProductReview[]) ?? []); });
+    return () => { alive = false; };
+  }, [productId]);
+
+  if (!supabase || !isUuid(productId)) return null;
+
+  return (
+    <div className="mt-8 border-t border-white/10 pt-6 pb-2">
+      <h5 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-4">
+        Reviews{reviews && reviews.length > 0 ? ` (${reviews.length})` : ''}
+      </h5>
+      {reviews === null ? (
+        <p className="text-sm text-zinc-500">Loading reviews…</p>
+      ) : reviews.length === 0 ? (
+        <p className="text-sm text-zinc-500">No reviews yet — be the first after your order arrives.</p>
+      ) : (
+        <div className="space-y-5">
+          {reviews.map((r, i) => (
+            <div key={i}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <RatingStars value={r.rating} size={13} />
+                <span className="text-sm font-semibold">{r.reviewer_name || 'Verified buyer'}</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2 py-0.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  Verified buyer
+                </span>
+                <span className="text-xs text-zinc-500 ml-auto">
+                  {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              </div>
+              {r.body && <p className="text-sm text-zinc-300 mt-2 leading-relaxed">{r.body}</p>}
+              {r.photos?.length > 0 && (
+                <div className="flex gap-2 mt-2.5">
+                  {r.photos.map(url => (
+                    <button key={url} onClick={() => setLightbox(url)} className="w-16 h-16 rounded-lg overflow-hidden bg-black/40 border border-white/10 hover:border-orange-500/60 transition-colors">
+                      <img src={url} alt="Customer photo" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[130] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox} alt="Customer photo" className="max-w-full max-h-full rounded-xl object-contain" />
+          <button aria-label="Close photo" className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [activeSectionState, setActiveSectionState] = useState<'hero' | 'collection'>('hero');
   const activeSectionRef = useRef<'hero' | 'collection'>('hero');
@@ -1023,20 +1122,18 @@ export default function App() {
                 </AnimatePresence>
               </div>
 
-              {/* Bestseller badge + social proof */}
+              {/* Bestseller badge + live social proof (hidden until real reviews exist) */}
               <div className="flex items-center justify-between mb-4">
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/15 border border-orange-500/30 rounded-full px-3 py-1">
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
                   Bestseller
                 </span>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex items-center gap-0.5 text-orange-400">
-                    {[0, 1, 2, 3, 4].map(s => (
-                      <svg key={s} xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01z"/></svg>
-                    ))}
+                {(design.reviewCount ?? 0) > 0 && design.rating != null && (
+                  <div className="flex items-center gap-1.5">
+                    <RatingStars value={design.rating} size={14} />
+                    <span className="text-xs text-zinc-400">{design.rating.toFixed(1)} ({design.reviewCount})</span>
                   </div>
-                  <span className="text-xs text-zinc-400">4.9 (128)</span>
-                </div>
+                )}
               </div>
 
             <h4 className="text-orange-400 text-sm tracking-widest uppercase mb-2 font-semibold">
@@ -1119,6 +1216,8 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            <ProductReviews productId={design.id} />
             </div>
 
             {/* Sticky purchase bar — always visible so buying is one tap away */}

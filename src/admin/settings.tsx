@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail, Send } from 'lucide-react';
+import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail, Send, Star } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
 import { PageScaffold } from './ui';
 
@@ -22,6 +22,8 @@ type SettingsForm = {
   telegram_admin_chat_id: string;
   payment_reminder_minutes: number;
   payment_expiry_hours: number;
+  review_reward_percent: number;
+  review_reminder_days: number;
 };
 
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
@@ -56,6 +58,8 @@ export function SettingsPage() {
         telegram_admin_chat_id: s?.telegram_admin_chat_id ?? '',
         payment_reminder_minutes: Number(s?.payment_reminder_minutes ?? 30),
         payment_expiry_hours: Number(s?.payment_expiry_hours ?? 24),
+        review_reward_percent: Number(s?.review_reward_percent ?? 10),
+        review_reminder_days: Number(s?.review_reminder_days ?? 3),
       });
     });
   }, []);
@@ -130,6 +134,8 @@ export function SettingsPage() {
         telegram_admin_chat_id: form.telegram_admin_chat_id.trim() || null,
         payment_reminder_minutes: Math.max(0, Math.round(form.payment_reminder_minutes) || 0),
         payment_expiry_hours: Math.max(0, Math.round(form.payment_expiry_hours) || 0),
+        review_reward_percent: Math.min(100, Math.max(0, Math.round(form.review_reward_percent) || 0)),
+        review_reminder_days: Math.max(0, Math.round(form.review_reminder_days) || 0),
       });
       if (error) throw error;
       setSaved(true);
@@ -349,6 +355,31 @@ export function SettingsPage() {
                 <li>Send <span className="font-mono">/id</span> to the bot and paste the number into "admin chat id" for new-order alerts.</li>
                 <li>Never configure a webhook for this bot — message polling would stop working.</li>
               </ol>
+            </div>
+          </section>
+
+          {/* Reviews & ratings */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Star size={15} /> Reviews</h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                Delivered customers are invited to rate their items (with photos). Reviews go live only after
+                you approve them in the <span className="text-zinc-300">Reviews</span> page.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-3xl">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Reward for approved review (%, 0 = off)</label>
+                <input className={input} type="number" min={0} max={100} step={5} value={form.review_reward_percent}
+                  onChange={e => patch({ review_reward_percent: Number(e.target.value) })} />
+                <p className="text-[11px] text-zinc-600 mt-1">Approving a review mints a single-use discount code and sends it to the customer.</p>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Review reminder after (days, 0 = off)</label>
+                <input className={input} type="number" min={0} step={1} value={form.review_reminder_days}
+                  onChange={e => patch({ review_reminder_days: Number(e.target.value) })} />
+                <p className="text-[11px] text-zinc-600 mt-1">Delivered orders with no review get one "how's the fit?" nudge (Telegram + email).</p>
+              </div>
             </div>
           </section>
         </div>

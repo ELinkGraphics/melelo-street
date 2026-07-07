@@ -4,10 +4,10 @@ import {
   X, Plus, Minus, Trash2, ShoppingBag, CheckCircle2,
   Package, Truck, MapPin, ChevronLeft, ChevronRight,
   Loader2, ClipboardList, Landmark, Upload, ReceiptText, BadgeCheck, Wallet,
-  XCircle,
+  XCircle, Star, Camera, Copy, Check,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import { compressImage } from './lib/imageUpload';
+import { compressImage, IMMUTABLE_CACHE } from './lib/imageUpload';
 import { getTgInitData, tgUser } from './lib/telegram';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +38,17 @@ export interface OrderStub {
   items: CartItem[];
 }
 
+// A review this order's buyer submitted (any moderation status).
+export interface OrderReview {
+  product_id: string;
+  rating: number;
+  body: string | null;
+  photos: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  reward_code: string | null;
+  reviewer_name: string | null;
+}
+
 // Live order as returned by the get_order_by_token RPC.
 export interface LiveOrder {
   id: string;
@@ -53,7 +64,10 @@ export interface LiveOrder {
   address: string;
   // Deadline for unpaid Chapa orders (stock is released after this); null otherwise.
   payment_expires_at?: string | null;
-  items: { name: string; image: string | null; size: string; color: string; unit_price: number; qty: number }[];
+  // Reward percent for approved reviews (Settings knob; 0 = off).
+  reward_percent?: number;
+  items: { product_id?: string | null; name: string; image: string | null; size: string; color: string; unit_price: number; qty: number }[];
+  reviews?: OrderReview[];
   events: { status: string; note: string | null; at: string }[];
 }
 
@@ -98,6 +112,10 @@ function load<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
+
+// One-shot flag set by "&review=1" deep links ("Rate your items" buttons in
+// emails/Telegram); TrackingView consumes it to scroll the review card into view.
+let reviewIntent = false;
 
 // Fetch one order via its (id, token) pair. Returns null when unavailable.
 async function fetchLiveOrder(stub: Pick<OrderStub, 'id' | 'token'>): Promise<LiveOrder | null> {
@@ -264,6 +282,7 @@ export function useCommerce(): Commerce {
     const params = new URLSearchParams(window.location.search);
     const track = params.get('track');
     if (!track) return;
+    if (params.get('review')) reviewIntent = true; // "Rate your items" links land on the review card
     window.history.replaceState({}, '', window.location.pathname); // clean the URL
     const [id, token] = track.split(':');
     if (!id || !token) return;
@@ -746,6 +765,211 @@ function AccountView({ c }: { c: Commerce }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Post-delivery reviews — one card per product in the delivered order.
+// Submissions go through the submit_review RPC (token-authenticated) and wait
+// for admin approval; approval mints the reward code shown back here.
+// ---------------------------------------------------------------------------
+function StarPicker({ value, onChange, size = 26 }: { value: number; onChange?: (v: number) => void; size?: number }) {
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button
+          key={n}
+          type="button"
+          disabled={!onChange}
+          onClick={() => onChange?.(n)}
+          aria-label={`${n} star${n > 1 ? 's' : ''}`}
+          className={`${onChange ? 'cursor-pointer hover:scale-110 transition-transform' : 'cursor-default'} ${n <= value ? 'text-orange-400' : 'text-zinc-600'}`}
+        >
+          <Star size={size} fill={n <= value ? 'currentColor' : 'none'} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReviewCard({
+  stub, item, review, rewardPercent, onChanged,
+}: {
+  stub: Pick<OrderStub, 'id' | 'token'>;
+  item: { product_id: string; name: string; image: string | null };
+  review?: OrderReview;
+  rewardPercent: number;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [rating, setRating] = useState(review?.rating ?? 0);
+  const [body, setBody] = useState(review?.body ?? '');
+  const [name, setName] = useState(() => {
+    const u = tgUser();
+    return u ? [u.first_name, u.last_name].filter(Boolean).join(' ') : '';
+  });
+  const [photos, setPhotos] = useState<string[]>(review?.photos ?? []);
+  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addPhotos = async (files: FileList | null) => {
+    if (!files?.length || !supabase) return;
+    setUploading(true); setErr(null);
+    try {
+      const next = [...photos];
+      for (const file of Array.from(files).slice(0, 3 - next.length)) {
+        const { blob, ext, contentType } = await compressImage(file, 1280, 0.8);
+        const path = `${stub.id}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from('review-photos')
+          .upload(path, blob, { contentType, cacheControl: IMMUTABLE_CACHE });
+        if (error) throw new Error(error.message);
+        next.push(supabase.storage.from('review-photos').getPublicUrl(path).data.publicUrl);
+      }
+      setPhotos(next);
+    } catch (e: any) {
+      setErr(e?.message ?? 'Photo upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const submit = async () => {
+    if (!supabase || rating < 1 || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const { error } = await supabase.rpc('submit_review', {
+        p_id: stub.id,
+        p_token: stub.token,
+        p_product_id: item.product_id,
+        p_rating: rating,
+        p_body: body.trim() || null,
+        p_photos: photos,
+        p_name: name.trim() || null,
+      });
+      if (error) throw new Error(error.message);
+      setEditing(false);
+      onChanged();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not submit the review. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyCode = async (code: string) => {
+    try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* ignore */ }
+  };
+
+  const showForm = editing || !review;
+
+  return (
+    <div className="rounded-2xl bg-white/5 p-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-black/40 overflow-hidden flex items-center justify-center shrink-0">
+          {item.image && <img src={item.image} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />}
+        </div>
+        <p className="flex-1 min-w-0 text-sm font-medium truncate">{item.name}</p>
+        {review && !editing && (
+          review.status === 'approved'
+            ? <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 rounded-full px-2.5 py-1">Published</span>
+            : review.status === 'pending'
+              ? <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/15 border border-amber-500/30 rounded-full px-2.5 py-1">Awaiting approval</span>
+              : <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 bg-white/10 border border-white/15 rounded-full px-2.5 py-1">Not published</span>
+        )}
+      </div>
+
+      {!showForm && review && (
+        <div className="mt-3">
+          <StarPicker value={review.rating} size={16} />
+          {review.body && <p className="text-sm text-zinc-300 mt-2 leading-relaxed">{review.body}</p>}
+          {review.photos.length > 0 && (
+            <div className="flex gap-2 mt-2">
+              {review.photos.map(url => (
+                <a key={url} href={url} target="_blank" rel="noreferrer" className="w-14 h-14 rounded-lg overflow-hidden bg-black/40 border border-white/10">
+                  <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                </a>
+              ))}
+            </div>
+          )}
+          {review.status === 'approved' && review.reward_code && (
+            <div className="mt-3 rounded-xl border border-dashed border-orange-500/50 bg-black/30 p-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] text-zinc-400">{rewardPercent > 0 ? `${rewardPercent}% off your next order` : 'Your thank-you code'}</p>
+                <p className="font-mono font-bold text-orange-400 tracking-widest">{review.reward_code}</p>
+              </div>
+              <button onClick={() => copyCode(review.reward_code!)} aria-label="Copy code"
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-zinc-300 transition-colors">
+                {copied ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+              </button>
+            </div>
+          )}
+          {review.status !== 'approved' && (
+            <button onClick={() => { setEditing(true); setRating(review.rating); setBody(review.body ?? ''); setPhotos(review.photos); }}
+              className="mt-3 text-xs font-semibold text-orange-400 hover:text-orange-300">
+              Edit review
+            </button>
+          )}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="mt-3 space-y-3">
+          <StarPicker value={rating} onChange={setRating} />
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            maxLength={2000}
+            rows={3}
+            placeholder="How's the fit, fabric, look? (optional)"
+            className="w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500 resize-none"
+          />
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            maxLength={80}
+            placeholder="Display name (optional)"
+            className="w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500"
+          />
+          <div className="flex items-center gap-2 flex-wrap">
+            {photos.map(url => (
+              <div key={url} className="relative w-14 h-14 rounded-lg overflow-hidden bg-black/40 border border-white/10">
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                <button onClick={() => setPhotos(p => p.filter(u => u !== url))} aria-label="Remove photo"
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center">
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+            {photos.length < 3 && (
+              <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="w-14 h-14 rounded-lg border border-dashed border-white/25 text-zinc-400 hover:border-orange-500 hover:text-orange-400 transition-colors flex flex-col items-center justify-center gap-0.5 disabled:opacity-50">
+                {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                <span className="text-[9px]">{uploading ? '' : 'Photo'}</span>
+              </button>
+            )}
+            <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => addPhotos(e.target.files)} />
+          </div>
+          {err && <p className="text-xs text-red-400">{err}</p>}
+          <button
+            onClick={submit}
+            disabled={rating < 1 || busy || uploading}
+            className="w-full flex items-center justify-center gap-2 bg-orange-500 text-black py-3 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-orange-400 transition-colors disabled:opacity-40"
+          >
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Star size={16} />}
+            {review ? 'Update review' : 'Submit review'}
+          </button>
+          {rewardPercent > 0 && !review?.reward_code && (
+            <p className="text-[11px] text-zinc-400 text-center">
+              Get <span className="text-orange-400 font-semibold">{rewardPercent}% off</span> your next order once your review is approved.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrackingView({ c }: { c: Commerce }) {
   const stub = c.orders.find(o => o.id === c.activeOrderId);
   const [order, setOrder] = useState<LiveOrder | null>(null);
@@ -791,6 +1015,16 @@ function TrackingView({ c }: { c: Commerce }) {
     const id = setInterval(refresh, 8000);
     return () => clearInterval(id);
   }, [refresh]);
+
+  // "&review=1" deep links: once the delivered order is on screen, bring the
+  // review cards into view.
+  const reviewRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!reviewIntent || order?.fulfillment_status !== 'delivered') return;
+    reviewIntent = false;
+    const t = setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 400);
+    return () => clearTimeout(t);
+  }, [order?.fulfillment_status]);
 
   if (!stub || (!loading && !order)) {
     return (
@@ -841,6 +1075,38 @@ function TrackingView({ c }: { c: Commerce }) {
                     : `Est. delivery ${fmtDate(new Date(order.placed_at).getTime() + 3 * 86400000)}`}
           </p>
         </div>
+
+        {/* Delivered: invite a rating + review (with photos) per product */}
+        {delivered && (() => {
+          const seen = new Set<string>();
+          const reviewable = order.items.filter(it => {
+            if (!it.product_id || seen.has(it.product_id)) return false;
+            seen.add(it.product_id);
+            return true;
+          });
+          if (reviewable.length === 0) return null;
+          const byProduct = new Map<string, OrderReview>((order.reviews ?? []).map(r => [r.product_id, r]));
+          return (
+            <div ref={reviewRef} className="mb-6 scroll-mt-4">
+              <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400 mb-3">Rate your items</h4>
+              <div className="space-y-3">
+                {reviewable.map(it => (
+                  // No @types/react in this project, so `key` isn't stripped from
+                  // typed component props — it lives on a Fragment instead.
+                  <React.Fragment key={it.product_id!}>
+                    <ReviewCard
+                      stub={stub}
+                      item={{ product_id: it.product_id!, name: it.name, image: it.image }}
+                      review={byProduct.get(it.product_id!)}
+                      rewardPercent={Number(order.reward_percent ?? 0)}
+                      onChanged={refresh}
+                    />
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Unpaid Chapa order: nudge + one-tap retry */}
         {unpaidChapa && (
