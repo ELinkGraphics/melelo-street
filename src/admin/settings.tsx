@@ -35,6 +35,18 @@ type SettingsForm = {
 // The seed data used '#' placeholders — treat them as empty.
 const realUrl = (v: unknown) => (typeof v === 'string' && v.trim() && v.trim() !== '#') ? v.trim() : '';
 
+// Horizontal tab layout — one settings area on screen at a time.
+type SettingsTab = 'store' | 'payments' | 'shipping' | 'email' | 'telegram' | 'reviews' | 'legal';
+const TABS: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
+  { key: 'store', label: 'Store', icon: Store },
+  { key: 'payments', label: 'Payments', icon: Wallet },
+  { key: 'shipping', label: 'Shipping', icon: Truck },
+  { key: 'email', label: 'Email', icon: Mail },
+  { key: 'telegram', label: 'Telegram', icon: Send },
+  { key: 'reviews', label: 'Reviews', icon: Star },
+  { key: 'legal', label: 'Legal', icon: ScrollText },
+];
+
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
 
 export function SettingsPage() {
@@ -42,6 +54,7 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [tab, setTab] = useState<SettingsTab>('store');
 
   useEffect(() => {
     requireSupabase().from('settings').select('*').eq('id', 1).maybeSingle().then(({ data, error }) => {
@@ -188,8 +201,33 @@ export function SettingsPage() {
       {!form ? (
         <p className="text-sm text-zinc-500">Loading…</p>
       ) : (
-        <div className="grid lg:grid-cols-3 gap-4 max-w-5xl">
+        <div className="max-w-3xl">
+          {/* Tab bar — a green dot marks channels that are switched on */}
+          <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
+            {TABS.map(t => {
+              const on = t.key === 'payments' ? form.chapa_enabled
+                : t.key === 'email' ? form.email_enabled
+                : t.key === 'telegram' ? form.telegram_enabled
+                : null;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                    tab === t.key ? 'bg-orange-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'
+                  }`}
+                >
+                  <t.icon size={14} />
+                  {t.label}
+                  {on != null && <span className={`w-1.5 h-1.5 rounded-full ${on ? 'bg-green-400' : tab === t.key ? 'bg-black/30' : 'bg-zinc-600'}`} />}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-4">
           {/* Store profile */}
+          {tab === 'store' && (
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
             <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Store size={15} /> Store</h3>
             <div>
@@ -223,8 +261,10 @@ export function SettingsPage() {
               <p className="text-[11px] text-zinc-600 mt-1">Shown in the storefront's About panel; leave empty to hide a link.</p>
             </div>
           </section>
+          )}
 
           {/* Bank details */}
+          {tab === 'payments' && (
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
             <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Landmark size={15} /> Bank transfer</h3>
             <p className="text-xs text-zinc-500">Shown to customers at checkout for slip payments.</p>
@@ -241,8 +281,10 @@ export function SettingsPage() {
               <input className={input} value={form.bank_account} onChange={e => patch({ bank_account: e.target.value })} />
             </div>
           </section>
+          )}
 
           {/* Shipping */}
+          {tab === 'shipping' && (
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
             <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Truck size={15} /> Shipping</h3>
             <p className="text-xs text-zinc-500">Order totals are computed server-side from these values.</p>
@@ -257,9 +299,11 @@ export function SettingsPage() {
                 placeholder="e.g. 200" onChange={e => patch({ free_ship_threshold: e.target.value })} />
             </div>
           </section>
+          )}
 
           {/* Chapa payments */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+          {tab === 'payments' && (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Wallet size={15} /> Chapa payments</h3>
@@ -301,9 +345,11 @@ export function SettingsPage() {
             </div>
             <ChapaKeyManager />
           </section>
+          )}
 
           {/* Email notifications (Resend) */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+          {tab === 'email' && (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Mail size={15} /> Email notifications</h3>
@@ -344,9 +390,11 @@ export function SettingsPage() {
             </div>
             <ResendKeyManager />
           </section>
+          )}
 
           {/* Telegram bot & Mini App */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+          {tab === 'telegram' && (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Send size={15} /> Telegram</h3>
@@ -396,9 +444,11 @@ export function SettingsPage() {
               </ol>
             </div>
           </section>
+          )}
 
           {/* Reviews & ratings */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+          {tab === 'reviews' && (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
             <div>
               <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Star size={15} /> Reviews</h3>
               <p className="text-xs text-zinc-500 mt-1">
@@ -421,9 +471,11 @@ export function SettingsPage() {
               </div>
             </div>
           </section>
+          )}
 
           {/* Legal pages */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 lg:col-span-3">
+          {tab === 'legal' && (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
             <div>
               <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><ScrollText size={15} /> Legal pages</h3>
               <p className="text-xs text-zinc-500 mt-1">
@@ -449,6 +501,8 @@ export function SettingsPage() {
               </div>
             </div>
           </section>
+          )}
+          </div>
         </div>
       )}
     </PageScaffold>
