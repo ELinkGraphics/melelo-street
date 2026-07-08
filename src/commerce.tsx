@@ -1141,6 +1141,16 @@ function TrackingView({ c }: { c: Commerce }) {
                 : (order.payment_method === 'chapa' ? 'Paid via Chapa' : 'Payment approved')}
             </p>
           </div>
+          {order.payment_status === 'paid' && (
+            <a
+              href={`/?receipt=${stub.id}:${stub.token}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 text-xs font-semibold text-orange-400 hover:text-orange-300 border border-orange-500/40 rounded-full px-3 py-1.5 transition-colors"
+            >
+              Receipt
+            </a>
+          )}
         </div>
 
         {/* Timeline */}

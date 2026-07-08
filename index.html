@@ -31,7 +31,7 @@
          priority. Added via script so /admin (which never shows them) doesn't
          preload them — avoids wasted bandwidth + console warnings there. -->
     <script>
-      if (!location.pathname.startsWith('/admin')) {
+      if (!location.pathname.startsWith('/admin') && !location.search.includes('receipt=')) {
         for (const href of ['/bg.webp', '/models/hero_model.webp']) {
           const l = document.createElement('link');
           l.rel = 'preload'; l.as = 'image'; l.href = href; l.fetchPriority = 'high';

@@ -7,6 +7,11 @@ import './index.css';
 // Admin is code-split so the storefront never downloads the dashboard bundle.
 const AdminApp = lazy(() => import('./admin/AdminApp.tsx'));
 
+// Printable receipt (/?receipt=<id>:<token>) — a standalone light document,
+// also code-split since it's only opened from emails/Telegram.
+const ReceiptPage = lazy(() => import('./receipt.tsx'));
+const wantsReceipt = new URLSearchParams(window.location.search).has('receipt');
+
 // Production-only service worker: repeat opens serve images/assets from disk
 // (dev is excluded so local changes are never masked by a stale cache).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -28,8 +33,13 @@ createRoot(document.getElementById('root')!).render(
             </Suspense>
           }
         />
-        {/* Storefront (unchanged) */}
-        <Route path="/*" element={<App />} />
+        {/* Storefront — or the printable receipt when the URL asks for one */}
+        <Route
+          path="/*"
+          element={wantsReceipt
+            ? <Suspense fallback={<div className="min-h-[100dvh] bg-white" />}><ReceiptPage /></Suspense>
+            : <App />}
+        />
       </Routes>
     </BrowserRouter>
   </StrictMode>,
