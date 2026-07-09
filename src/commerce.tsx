@@ -4,7 +4,7 @@ import {
   X, Plus, Minus, Trash2, ShoppingBag, CheckCircle2,
   Package, Truck, MapPin, ChevronLeft, ChevronRight,
   Loader2, ClipboardList, Landmark, Upload, ReceiptText, BadgeCheck, Wallet,
-  XCircle, Star, Camera, Copy, Check,
+  XCircle, Star, Camera, Copy, Check, Send as SendIcon,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { compressImage, IMMUTABLE_CACHE } from './lib/imageUpload';
@@ -63,6 +63,10 @@ export interface LiveOrder {
   fulfillment_status: 'pending_approval' | 'confirmed' | 'packed' | 'shipped' | 'out_for_delivery' | 'delivered' | 'cancelled';
   payment_method: PaymentMethod;
   address: string;
+  // Telegram connect state: linked = updates already flow to a chat;
+  // telegram_bot = bot username when the channel is enabled (else null).
+  telegram_linked?: boolean;
+  telegram_bot?: string | null;
   // Deadline for unpaid Chapa orders (stock is released after this); null otherwise.
   payment_expires_at?: string | null;
   // Reward percent for approved reviews (Settings knob; 0 = off).
@@ -488,10 +492,13 @@ function CheckoutView({ c }: { c: Commerce }) {
     });
   };
 
-  const valid = !!(name.trim() && address.trim() && (
-    (method === 'bank_slip' && slipFile) ||
-    (method === 'chapa' && /^\S+@\S+\.\S+$/.test(email.trim()))
-  ));
+  // Phone + email are required for every order (receipts, reminders and the
+  // Telegram connect flow all depend on them); the server enforces this too.
+  const valid = !!(name.trim() && address.trim()
+    && phone.replace(/\D/g, '').length >= 7
+    && /^\S+@\S+\.\S+$/.test(email.trim())
+    && method
+    && (method !== 'bank_slip' || !!slipFile));
 
   const placeOrder = () => {
     if (!valid || !method) return;
@@ -517,8 +524,8 @@ function CheckoutView({ c }: { c: Commerce }) {
           <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400 flex items-center gap-2"><MapPin size={14} /> Shipping</h4>
           <input className={field} placeholder="Full name" value={name} onChange={e => setName(e.target.value)} />
           <input className={field} placeholder="Address, city" value={address} onChange={e => setAddress(e.target.value)} />
-          <input className={field} placeholder="Phone (optional)" value={phone} onChange={e => setPhone(e.target.value)} />
-          <input className={field} type="email" placeholder={method === 'chapa' ? 'Email (required for Chapa)' : 'Email (optional)'} value={email} onChange={e => setEmail(e.target.value)} />
+          <input className={field} type="tel" placeholder="Phone" required value={phone} onChange={e => setPhone(e.target.value)} />
+          <input className={field} type="email" placeholder="Email" required value={email} onChange={e => setEmail(e.target.value)} />
         </section>
 
         <section className="space-y-3">
@@ -664,8 +671,41 @@ function ProcessingView() {
   );
 }
 
+// One-tap opt-in to Telegram updates for website orders: a t.me deep link
+// carrying the order's tracking token; the bot links this chat on /start.
+// (Bots can't message people by phone number — this is the sanctioned flow.)
+function TelegramConnect({ bot, token }: { bot: string; token: string }) {
+  return (
+    <a
+      href={`https://t.me/${bot}?start=t${token.replace(/-/g, '')}`}
+      target="_blank"
+      rel="noreferrer"
+      className="w-full flex items-center gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 p-3.5 hover:bg-sky-500/15 transition-colors"
+    >
+      <span className="w-10 h-10 rounded-full bg-sky-500/20 flex items-center justify-center shrink-0">
+        <SendIcon size={17} className="text-sky-400" />
+      </span>
+      <span className="flex-1 min-w-0 text-left">
+        <span className="block text-sm font-semibold text-sky-300">Get updates on Telegram</span>
+        <span className="block text-xs text-sky-200/70 mt-0.5">One tap — every order update arrives as a chat message.</span>
+      </span>
+      <ChevronRight size={16} className="text-sky-400 shrink-0" />
+    </a>
+  );
+}
+
 function SuccessView({ c }: { c: Commerce }) {
   const order = c.orders.find(o => o.id === c.activeOrderId);
+  // Offer the Telegram connect only to website buyers (in-Telegram orders are
+  // linked automatically at checkout).
+  const [bot, setBot] = useState<string | null>(null);
+  useEffect(() => {
+    if (getTgInitData()) return;
+    supabase?.from('settings').select('telegram_enabled,telegram_bot_username').eq('id', 1).maybeSingle().then(({ data }) => {
+      const s = data as any;
+      if (s?.telegram_enabled && s?.telegram_bot_username) setBot(String(s.telegram_bot_username));
+    });
+  }, []);
   return (
     <motion.div key="success" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
       <PanelHeader title="Order received" onClose={() => c.setView('closed')} />
@@ -683,6 +723,7 @@ function SuccessView({ c }: { c: Commerce }) {
             <div className="flex justify-between text-sm mt-1"><span className="text-zinc-400">Status</span><span className="font-semibold text-orange-400">Payment approval</span></div>
           </div>
         )}
+        {order && bot && <TelegramConnect bot={bot} token={order.token} />}
       </div>
       <div className="border-t border-white/10 px-6 pt-6 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] space-y-3 shrink-0">
         <button onClick={() => order && c.openTracking(order.id)} className="w-full bg-white text-black py-4 rounded-full font-bold uppercase tracking-wide hover:bg-orange-500 hover:text-white transition-colors">
@@ -1152,6 +1193,13 @@ function TrackingView({ c }: { c: Commerce }) {
             </a>
           )}
         </div>
+
+        {/* Website order not yet linked to Telegram: one-tap connect */}
+        {order.telegram_bot && order.telegram_linked === false && !getTgInitData() && (
+          <div className="mb-6">
+            <TelegramConnect bot={order.telegram_bot} token={stub.token} />
+          </div>
+        )}
 
         {/* Timeline */}
         <div className="relative pl-2">
