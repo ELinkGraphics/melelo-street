@@ -32,6 +32,15 @@ export default function ReceiptPage() {
   const [contact, setContact] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'notfound'>('loading');
 
+  // Private page (carries an order token) — keep it out of every index.
+  useEffect(() => {
+    const m = document.createElement('meta');
+    m.name = 'robots';
+    m.content = 'noindex, nofollow';
+    document.head.appendChild(m);
+    return () => { document.head.removeChild(m); };
+  }, []);
+
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get('receipt') ?? '';
     const [id, token] = raw.split(':');

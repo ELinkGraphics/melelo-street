@@ -4,7 +4,7 @@ import { useCommerce, CommerceLayer, UNIT_PRICE } from './commerce';
 import { fetchCatalog, type Category, type Design, type ColorVariant } from './lib/catalog';
 import { supabase } from './lib/supabase';
 import { initTelegram } from './lib/telegram';
-import { fmtMoney, moneySymbol, setCurrencyCode } from './lib/currency';
+import { fmtMoney, moneySymbol, setCurrencyCode, currencyCode } from './lib/currency';
 
 // Admin-managed hero config (settings.hero); every field optional — defaults
 // below match the built-in design. Transforms are per device; legacy configs
@@ -314,6 +314,48 @@ function ProductReviews({ productId }: { productId: string }) {
   );
 }
 
+// Build a schema.org ItemList of the live catalog for search + AI crawlers.
+// Prices, stock and star ratings ride along so results/answers stay accurate.
+function buildCatalogLd(categories: Category[], origin: string) {
+  const abs = (u?: string) => (!u ? undefined : u.startsWith('http') ? u : origin + u);
+  let pos = 1;
+  const itemListElement = categories.flatMap(cat =>
+    cat.designs.map(d => {
+      const image = abs(d.model || d.item);
+      const inStock = d.colors.some(c => !c.stock || Object.values(c.stock).some(q => (q ?? 0) > 0));
+      const product: Record<string, unknown> = {
+        '@type': 'Product',
+        name: d.name,
+        category: cat.name,
+        description: `${d.name} — ${cat.name} by Melelo Brands.`,
+        brand: { '@type': 'Brand', name: 'Melelo Brands' },
+        offers: {
+          '@type': 'Offer',
+          price: (d.price ?? UNIT_PRICE).toFixed(2),
+          priceCurrency: currencyCode(),
+          availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+          url: origin + '/',
+        },
+      };
+      if (image) product.image = image;
+      if ((d.reviewCount ?? 0) > 0 && d.rating != null) {
+        product.aggregateRating = {
+          '@type': 'AggregateRating',
+          ratingValue: d.rating,
+          reviewCount: d.reviewCount,
+        };
+      }
+      return { '@type': 'ListItem', position: pos++, item: product };
+    })
+  );
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Melelo Brands — Collection',
+    itemListElement,
+  };
+}
+
 export default function App() {
   const [activeSectionState, setActiveSectionState] = useState<'hero' | 'collection'>('hero');
   const activeSectionRef = useRef<'hero' | 'collection'>('hero');
@@ -361,6 +403,21 @@ export default function App() {
         });
       });
   }, []);
+
+  // Inject/refresh the catalog structured data whenever the catalog or store
+  // currency changes. Kept in <head> so JS-rendering crawlers pick it up.
+  useEffect(() => {
+    if (!categories.length) return;
+    const ld = buildCatalogLd(categories, window.location.origin);
+    let el = document.getElementById('mlb-catalog-ld') as HTMLScriptElement | null;
+    if (!el) {
+      el = document.createElement('script');
+      el.id = 'mlb-catalog-ld';
+      el.type = 'application/ld+json';
+      document.head.appendChild(el);
+    }
+    el.textContent = JSON.stringify(ld);
+  }, [categories, store]);
 
   const category = categories[categoryIndex] ?? categories[0];
   const colors = category.designs[0].colors;             // color set is consistent within a category

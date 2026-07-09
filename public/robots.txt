@@ -1,3 +1,30 @@
+# Melelo Brands — https://melelo.shop
+# Search engines and AI/LLM crawlers are welcome to index the storefront.
+# Order tracking, receipt and payment-return links carry private tokens, so
+# those and the admin dashboard are excluded from all crawlers.
+
 User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /*?track=
+Disallow: /*?receipt=
+Disallow: /*?chapa_order=
+
+# AI / LLM crawlers — explicitly welcome (same private-URL exclusions apply).
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-Web
+User-agent: anthropic-ai
+User-agent: PerplexityBot
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: CCBot
+Allow: /
+Disallow: /admin
+Disallow: /*?track=
+Disallow: /*?receipt=
+Disallow: /*?chapa_order=
+
+Sitemap: https://melelo.shop/sitemap.xml

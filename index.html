@@ -4,9 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Melelo Brands — Streetwear</title>
-    <meta name="description" content="Melelo Brands — contemporary streetwear. Chaotic authenticity." />
+    <meta name="description" content="Melelo Brands — contemporary streetwear from Addis Ababa. Tees, hoodies and everyday pieces. Shop online with delivery, bank transfer or Chapa." />
+    <link rel="canonical" href="https://melelo.shop/" />
     <link rel="icon" type="image/webp" href="/logo.webp" />
     <meta name="theme-color" content="#09090b" />
+
+    <!-- Structured data for search + AI crawlers. Static Organization/WebSite
+         here; live Product/ItemList data is injected at runtime from the
+         catalog (App.tsx), which JS-rendering crawlers like Googlebot execute. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Melelo Brands",
+      "url": "https://melelo.shop/",
+      "logo": "https://melelo.shop/logo.webp",
+      "image": "https://melelo.shop/models/hero_model.webp",
+      "description": "Contemporary streetwear from Addis Ababa, Ethiopia. Tees, hoodies and everyday pieces for the modern explorer.",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Addis Ababa",
+        "addressCountry": "ET"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Melelo Brands",
+      "url": "https://melelo.shop/"
+    }
+    </script>
 
     <!-- Social sharing cards (Instagram, Telegram, Twitter/X, WhatsApp).
          Scrapers need ABSOLUTE URLs — these point at the production domain. -->

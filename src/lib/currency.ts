@@ -8,14 +8,20 @@ const SYMBOLS: Record<string, string> = {
 };
 
 let symbol = '$';
+let code = 'USD';
 
-export function setCurrencyCode(code?: string | null) {
-  const c = (code ?? 'USD').trim().toUpperCase();
-  symbol = SYMBOLS[c] ?? (c ? `${c} ` : '$');
+export function setCurrencyCode(c?: string | null) {
+  code = (c ?? 'USD').trim().toUpperCase() || 'USD';
+  symbol = SYMBOLS[code] ?? `${code} `;
 }
 
 export function moneySymbol() {
   return symbol;
+}
+
+// ISO code (e.g. "ETB", "USD") — for structured data / schema.org offers.
+export function currencyCode() {
+  return code;
 }
 
 export function fmtMoney(n: number) {

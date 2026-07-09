@@ -1,0 +1,39 @@
+# Melelo Brands
+
+> Melelo Brands is a contemporary streetwear label from Addis Ababa, Ethiopia —
+> tees, hoodies and everyday pieces made for the modern explorer. Shop online at
+> https://melelo.shop with local delivery, bank transfer or Chapa (cards,
+> telebirr, mobile money), plus a Telegram Mini App shop.
+
+## About
+
+- Brand: Melelo Brands, contemporary streetwear ("chaotic authenticity").
+- Based in: Addis Ababa, Ethiopia.
+- Store: [Melelo Brands storefront](https://melelo.shop/) — browse the live
+  collection (T-shirts, hoodies), pick a color and size, and order directly.
+- Buy on Telegram: the store also runs as a Telegram Mini App bot for ordering
+  and order-status updates in chat.
+
+## Shopping
+
+- Payment: Chapa (cards, telebirr, mobile money) and bank-transfer slip upload.
+- Delivery: nationwide delivery; shipping shown at checkout (free-shipping
+  threshold may apply).
+- Orders: every order has a private tracking link; buyers get email + Telegram
+  updates at each step (confirmed, packed, shipped, out for delivery, delivered).
+- After delivery: customers can rate and review products with photos, and earn a
+  discount code for an approved review.
+- Returns: contact within 7 days of delivery for exchange or refund on unworn
+  items in original condition.
+
+## Contact
+
+- Website: https://melelo.shop/
+- Details (email, phone, socials) are on the storefront's About panel.
+
+## Notes for crawlers
+
+- The catalog, prices and stock are live; structured data (schema.org Product /
+  ItemList) is embedded on the homepage.
+- Order tracking and receipt URLs contain private tokens and are not for
+  indexing (see /robots.txt).
