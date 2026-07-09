@@ -11,9 +11,12 @@ export type ColorVariant = {
   item?: string;
   stock?: Record<string, number>;
 };
+// Admin-tuned placement of the model image in the collection view, per device.
+export type DisplayXform = { scale?: number; x?: number; y?: number };
 export type Design = {
   id: string; name: string; model: string; item: string; colors: ColorVariant[]; price?: number;
   bestseller?: boolean;
+  display?: { desktop?: DisplayXform; mobile?: DisplayXform } | null;
   // Live review aggregates (null/0 until the first review is approved).
   rating?: number | null; reviewCount?: number;
 };
@@ -48,7 +51,7 @@ export async function fetchCatalog(): Promise<Category[]> {
   const { data, error } = await supabase
     .from('products')
     .select(`
-      id, slug, name, base_price, is_bestseller, rating, review_count, created_at,
+      id, slug, name, base_price, is_bestseller, rating, review_count, display, created_at,
       category:categories!inner ( id, slug, name, sort ),
       variants:product_variants ( id, color_name, color_hex, inventory:inventory ( size, stock_qty ) ),
       images:product_images ( variant_id, view, url, sort )
@@ -96,6 +99,7 @@ export async function fetchCatalog(): Promise<Category[]> {
           id: p.id, name: p.name, model: baseModel ?? '', item: baseItem ?? '', colors,
           price: Number(p.base_price),
           bestseller: Boolean(p.is_bestseller),
+          display: p.display ?? undefined,
           rating: p.rating != null ? Number(p.rating) : null,
           reviewCount: Number(p.review_count ?? 0),
         };

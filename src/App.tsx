@@ -887,8 +887,22 @@ export default function App() {
                     transition={{ duration: 0.4 }}
                     className="absolute inset-0"
                   >
-                    {/* Center is always the model (-model) image of the active design + color. */}
-                    <SlotImage slot={centerSlot} eager imgClassName="w-full h-full object-contain object-bottom md:object-top drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]" maskPosition="center top" />
+                    {/* Center is always the model (-model) image of the active design + color.
+                        Wrapped in the product's admin-tuned per-device transform (products.display). */}
+                    {(() => {
+                      const dxf = (isMobile ? design.display?.mobile : design.display?.desktop) ?? {};
+                      const ds = dxf.scale ?? 1, dx = dxf.x ?? 0, dy = dxf.y ?? 0;
+                      return (
+                        <div
+                          className="w-full h-full will-change-transform"
+                          style={ds !== 1 || dx !== 0 || dy !== 0
+                            ? { transform: `translate(${dx}px, ${dy}px) scale(${ds})`, transformOrigin: isMobile ? 'bottom center' : 'top center' }
+                            : undefined}
+                        >
+                          <SlotImage slot={centerSlot} eager imgClassName="w-full h-full object-contain object-bottom md:object-top drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)]" maskPosition="center top" />
+                        </div>
+                      );
+                    })()}
                   </motion.div>
                 </AnimatePresence>
               </motion.div>

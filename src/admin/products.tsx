@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Loader2, X, Save, Package, Upload, Star } from 'lucide-react';
+import { Plus, Trash2, Loader2, X, Save, Package, Upload, Star, Monitor, Smartphone, RotateCcw, Move } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
 import { compressImage, IMMUTABLE_CACHE } from '../lib/imageUpload';
 import { PageScaffold, EmptyState } from './ui';
@@ -10,6 +10,14 @@ const slugify = (s: string) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 type Cat = { id: string; name: string; slug: string };
+// Placement of the model image in the storefront's collection view, per device.
+type Xform = { scale: number; x: number; y: number };
+type DisplayForm = { desktop: Xform; mobile: Xform };
+const XF0: Xform = { scale: 1, x: 0, y: 0 };
+const normalizeDisplay = (raw: any): DisplayForm => ({
+  desktop: { ...XF0, ...(raw?.desktop ?? {}) },
+  mobile: { ...XF0, ...(raw?.mobile ?? {}) },
+});
 type VariantForm = {
   id?: string;
   color_name: string;
@@ -27,6 +35,7 @@ type ProductForm = {
   base_price: number;
   status: 'draft' | 'active' | 'archived';
   is_bestseller: boolean;
+  display: DisplayForm;
   variants: VariantForm[];
   removedVariantIds: string[];
 };
@@ -38,6 +47,7 @@ const emptyVariant = (): VariantForm => ({
 const emptyForm = (categoryId: string): ProductForm => ({
   category_id: categoryId, name: '', slug: '', description: '',
   base_price: 149, status: 'draft', is_bestseller: false,
+  display: normalizeDisplay(null),
   variants: [emptyVariant()], removedVariantIds: [],
 });
 
@@ -49,7 +59,7 @@ async function loadProductForm(id: string): Promise<ProductForm> {
   const { data, error } = await sb
     .from('products')
     .select(`
-      id, category_id, name, slug, description, base_price, status, is_bestseller,
+      id, category_id, name, slug, description, base_price, status, is_bestseller, display,
       variants:product_variants ( id, color_name, color_hex, sku, inventory:inventory ( size, stock_qty ) ),
       images:product_images ( variant_id, view, url )
     `)
@@ -68,7 +78,9 @@ async function loadProductForm(id: string): Promise<ProductForm> {
   return {
     id: d.id, category_id: d.category_id, name: d.name, slug: d.slug,
     description: d.description ?? '', base_price: Number(d.base_price),
-    status: d.status, is_bestseller: d.is_bestseller, variants, removedVariantIds: [],
+    status: d.status, is_bestseller: d.is_bestseller,
+    display: normalizeDisplay(d.display),
+    variants, removedVariantIds: [],
   };
 }
 
@@ -83,6 +95,7 @@ async function saveProduct(form: ProductForm): Promise<string> {
     base_price: form.base_price,
     status: form.status,
     is_bestseller: form.is_bestseller,
+    display: form.display,
   };
 
   let productId = form.id;
@@ -387,6 +400,15 @@ function ProductEditor({
               </div>
             ))}
           </section>
+
+          {/* Model position on the storefront (per device) */}
+          {form.id && (
+            <ModelPositionEditor
+              modelUrl={form.variants.find(v => v.images.model)?.images.model}
+              value={form.display}
+              onChange={display => patch({ display })}
+            />
+          )}
         </div>
 
         <footer className="shrink-0 border-t border-white/10 p-4 flex items-center gap-3">
@@ -402,6 +424,95 @@ function ProductEditor({
         </footer>
       </div>
     </div>
+  );
+}
+
+// Per-device placement of this product's model image in the collection view.
+// Same slider trio as the hero editor; saved with the product's Save button.
+function XSlider({ label, value, min, max, step, unit, onChange, onReset }: {
+  label: string; value: number; min: number; max: number; step: number; unit: string;
+  onChange: (v: number) => void; onReset: () => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-xs text-zinc-500">{label}</label>
+        <span className="text-xs font-mono text-zinc-300">
+          {value}{unit}
+          <button onClick={onReset} title="Reset" className="ml-2 text-zinc-600 hover:text-white align-middle"><RotateCcw size={11} /></button>
+        </span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        className="w-full accent-orange-500"
+      />
+    </div>
+  );
+}
+
+function ModelPositionEditor({ modelUrl, value, onChange }: {
+  modelUrl?: string;
+  value: DisplayForm;
+  onChange: (v: DisplayForm) => void;
+}) {
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const xf = value[device];
+  const patchXf = (p: Partial<Xform>) => onChange({ ...value, [device]: { ...xf, ...p } });
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400">
+          <Move size={14} /> Model position
+        </h3>
+        <div className="inline-flex items-center gap-1 rounded-full bg-white/5 border border-white/10 p-1">
+          <button onClick={() => setDevice('desktop')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${device === 'desktop' ? 'bg-orange-500 text-black' : 'text-zinc-300 hover:text-white'}`}>
+            <Monitor size={12} /> Desktop
+          </button>
+          <button onClick={() => setDevice('mobile')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${device === 'mobile' ? 'bg-orange-500 text-black' : 'text-zinc-300 hover:text-white'}`}>
+            <Smartphone size={12} /> Mobile
+          </button>
+        </div>
+      </div>
+      <p className="text-xs text-zinc-500 -mt-1">
+        How this product's model sits in the collection view — tune each device separately, then Save.
+      </p>
+
+      {!modelUrl ? (
+        <p className="text-xs text-zinc-500 rounded-xl border border-dashed border-white/15 p-4">
+          Upload a model image above to preview and position it.
+        </p>
+      ) : (
+        <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+          <div className="space-y-3">
+            <XSlider label="Scale" value={xf.scale} min={0.4} max={2} step={0.05} unit="×"
+              onChange={v => patchXf({ scale: v })} onReset={() => patchXf({ scale: 1 })} />
+            <XSlider label="Horizontal (− left · + right)" value={xf.x} min={-250} max={250} step={5} unit="px"
+              onChange={v => patchXf({ x: v })} onReset={() => patchXf({ x: 0 })} />
+            <XSlider label="Vertical (− up · + down)" value={xf.y} min={-250} max={250} step={5} unit="px"
+              onChange={v => patchXf({ y: v })} onReset={() => patchXf({ y: 0 })} />
+          </div>
+          {/* Approximate stage: mobile pins the model to the bottom edge, desktop hangs from the top */}
+          <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-b from-zinc-900 to-black select-none ${device === 'mobile' ? 'w-[132px] aspect-[9/17]' : 'w-[220px] aspect-video'}`}>
+            <div className={`absolute inset-0 flex justify-center ${device === 'mobile' ? 'items-end' : 'items-start'}`}>
+              <div
+                className="w-full h-full will-change-transform"
+                style={{
+                  transform: `translate(${xf.x / 2}px, ${xf.y / 2}px) scale(${xf.scale})`,
+                  transformOrigin: device === 'mobile' ? 'bottom center' : 'top center',
+                }}
+              >
+                <img src={modelUrl} alt="" className={`w-full h-full object-contain ${device === 'mobile' ? 'object-bottom' : 'object-top'}`} />
+              </div>
+            </div>
+            <span className="absolute bottom-1 right-2 text-[8px] uppercase tracking-wider text-white/30">approximate</span>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

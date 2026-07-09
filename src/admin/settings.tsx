@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail, Send, Star, ScrollText } from 'lucide-react';
+import { Save, Loader2, Store, Landmark, Truck, CheckCircle2, Wallet, KeyRound, Mail, Send, Star, ScrollText, ShieldAlert, Archive, ArchiveRestore } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
 import { PageScaffold } from './ui';
 
@@ -36,7 +36,7 @@ type SettingsForm = {
 const realUrl = (v: unknown) => (typeof v === 'string' && v.trim() && v.trim() !== '#') ? v.trim() : '';
 
 // Horizontal tab layout — one settings area on screen at a time.
-type SettingsTab = 'store' | 'payments' | 'shipping' | 'email' | 'telegram' | 'reviews' | 'legal';
+type SettingsTab = 'store' | 'payments' | 'shipping' | 'email' | 'telegram' | 'reviews' | 'legal' | 'danger';
 const TABS: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
   { key: 'store', label: 'Store', icon: Store },
   { key: 'payments', label: 'Payments', icon: Wallet },
@@ -45,6 +45,7 @@ const TABS: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
   { key: 'telegram', label: 'Telegram', icon: Send },
   { key: 'reviews', label: 'Reviews', icon: Star },
   { key: 'legal', label: 'Legal', icon: ScrollText },
+  { key: 'danger', label: 'Danger', icon: ShieldAlert },
 ];
 
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
@@ -502,6 +503,9 @@ export function SettingsPage() {
             </div>
           </section>
           )}
+
+          {/* Danger zone — archive & reset, gated by the reset code */}
+          {tab === 'danger' && <DangerZone />}
           </div>
         </div>
       )}
@@ -673,5 +677,148 @@ function ChapaKeyManager() {
       </div>
       <p className="text-[11px] text-zinc-600">Stored server-side in a private schema — it is never exposed to the browser or the API after saving.</p>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Danger zone — archive & reset. Every action re-checks the reset code
+// server-side (archive.assert_danger), so the code input here is only UX.
+// ---------------------------------------------------------------------------
+type ArchiveBatch = {
+  id: string; kind: string; label: string; item_count: number;
+  created_at: string; restored_at: string | null;
+};
+
+const DANGER_ACTIONS: { fn: string; title: string; desc: string }[] = [
+  { fn: 'admin_archive_orders', title: 'Archive all orders', desc: 'Orders, items, history, payments and reviews move to the archive. Dashboard, reports and product ratings reset to zero. Restorable below.' },
+  { fn: 'admin_archive_stock', title: 'Archive stock levels', desc: 'Saves every quantity to the archive, then sets all stock to 0. Restorable below.' },
+  { fn: 'admin_archive_messages', title: 'Archive Telegram inbox', desc: 'Clears the Messages page. Restorable below.' },
+  { fn: 'admin_archive_discounts', title: 'Archive discount codes', desc: 'Removes every code from checkout. Restorable below.' },
+];
+
+function DangerZone() {
+  const [code, setCode] = useState('');
+  const [batches, setBatches] = useState<ArchiveBatch[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = () => {
+    requireSupabase().rpc('admin_list_archive').then(({ data }) => {
+      setBatches((data as ArchiveBatch[] | null) ?? []);
+    });
+  };
+  useEffect(() => { load(); }, []);
+
+  const summarize = (fn: string, d: any): string => {
+    if (fn === 'admin_archive_all') {
+      const parts = ['orders', 'stock', 'messages', 'discounts']
+        .map(k => `${k} ${d?.[k]?.archived ?? 0}`);
+      return `Archived — ${parts.join(' · ')}.`;
+    }
+    if (fn === 'admin_restore_batch') return `Restored ${d?.restored ?? 0} ${d?.kind ?? ''} item(s).`;
+    return `Archived ${d?.archived ?? 0} ${d?.kind ?? ''} item(s).`;
+  };
+
+  const run = async (fn: string, confirmText: string, params: Record<string, unknown> = {}) => {
+    if (!code.trim()) { setErr('Enter the reset code first.'); return; }
+    if (!window.confirm(`${confirmText}\n\nAre you absolutely sure?`)) return;
+    const key = fn + JSON.stringify(params);
+    setBusy(key); setErr(null); setMsg(null);
+    const { data, error } = await requireSupabase().rpc(fn, { p_code: code.trim(), ...params });
+    setBusy(null);
+    if (error) { setErr(error.message); return; }
+    setMsg(summarize(fn, data));
+    load();
+  };
+
+  const fmtWhen = (s: string) =>
+    new Date(s).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <section className="rounded-2xl border border-red-500/30 bg-red-500/[0.04] p-5 space-y-5">
+      <div>
+        <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-red-400">
+          <ShieldAlert size={15} /> Danger zone
+        </h3>
+        <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+          Move business data into a hidden archive to reset the dashboard — e.g. before handing the store
+          to a new owner. Nothing is deleted: archived batches are listed below and orders, stock, messages
+          and codes can be restored. Every action requires the reset code and is verified server-side.
+        </p>
+      </div>
+
+      {err && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{err}</div>}
+      {msg && <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-300">{msg}</div>}
+
+      <div className="max-w-sm">
+        <label className="block text-xs text-zinc-500 mb-1.5">Reset code</label>
+        <input
+          className="w-full bg-white/5 border border-red-500/30 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-red-400 transition-colors placeholder:text-zinc-600"
+          type="password"
+          placeholder="Enter the reset code to unlock"
+          value={code}
+          onChange={e => { setCode(e.target.value); setErr(null); }}
+        />
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {DANGER_ACTIONS.map(a => (
+          <div key={a.fn} className="rounded-xl border border-white/10 bg-black/20 p-4 flex flex-col gap-2">
+            <p className="text-sm font-semibold">{a.title}</p>
+            <p className="text-xs text-zinc-500 leading-relaxed flex-1">{a.desc}</p>
+            <button
+              onClick={() => run(a.fn, a.title)}
+              disabled={!code.trim() || busy !== null}
+              className="self-start inline-flex items-center gap-1.5 border border-red-500/40 text-red-300 hover:bg-red-500/15 font-semibold text-xs uppercase tracking-wide px-4 py-2 rounded-full transition-colors disabled:opacity-40"
+            >
+              {busy === a.fn + '{}' ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />} Archive
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => run('admin_archive_all', 'Archive EVERYTHING — orders, stock levels, Telegram inbox and discount codes. The dashboard starts from zero.')}
+        disabled={!code.trim() || busy !== null}
+        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-red-500 text-white font-bold text-sm px-6 py-3 rounded-full hover:bg-red-400 transition-colors disabled:opacity-40"
+      >
+        {busy === 'admin_archive_all{}' ? <Loader2 size={15} className="animate-spin" /> : <ShieldAlert size={15} />}
+        Archive everything — full reset
+      </button>
+
+      <div className="border-t border-white/10 pt-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-3">Archive</p>
+        {batches.length === 0 ? (
+          <p className="text-sm text-zinc-500">Nothing archived yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {batches.map(b => (
+              <div key={b.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{b.label}</p>
+                  <p className="text-xs text-zinc-500">{b.item_count} item(s) · archived {fmtWhen(b.created_at)}</p>
+                </div>
+                {b.restored_at ? (
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-zinc-400 bg-white/10 rounded-full px-2.5 py-1">
+                    Restored {fmtWhen(b.restored_at)}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => run('admin_restore_batch', `Restore "${b.label}" (${b.item_count} items) back into the live store?`, { p_batch: b.id })}
+                    disabled={!code.trim() || busy !== null}
+                    className="shrink-0 inline-flex items-center gap-1.5 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/15 font-semibold text-xs uppercase tracking-wide px-3.5 py-1.5 rounded-full transition-colors disabled:opacity-40"
+                  >
+                    {busy === 'admin_restore_batch' + JSON.stringify({ p_batch: b.id })
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <ArchiveRestore size={12} />} Restore
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
