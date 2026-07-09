@@ -30,6 +30,12 @@ type SettingsForm = {
   social_instagram: string;
   social_twitter: string;
   social_tiktok: string;
+  creator_name: string;
+  creator_alias: string;
+  creator_role: string;
+  creator_tiktok: string;
+  creator_instagram: string;
+  creator_youtube: string;
 };
 
 // The seed data used '#' placeholders — treat them as empty.
@@ -89,6 +95,12 @@ export function SettingsPage() {
         social_instagram: realUrl(s?.socials?.instagram),
         social_twitter: realUrl(s?.socials?.twitter),
         social_tiktok: realUrl(s?.socials?.tiktok),
+        creator_name: s?.creator?.name ?? '',
+        creator_alias: s?.creator?.alias ?? '',
+        creator_role: s?.creator?.role ?? '',
+        creator_tiktok: realUrl(s?.creator?.tiktok),
+        creator_instagram: realUrl(s?.creator?.instagram),
+        creator_youtube: realUrl(s?.creator?.youtube),
       });
     });
   }, []);
@@ -174,6 +186,14 @@ export function SettingsPage() {
           instagram: form.social_instagram.trim(),
           twitter: form.social_twitter.trim(),
           tiktok: form.social_tiktok.trim(),
+        },
+        creator: {
+          name: form.creator_name.trim(),
+          alias: form.creator_alias.trim(),
+          role: form.creator_role.trim(),
+          tiktok: form.creator_tiktok.trim(),
+          instagram: form.creator_instagram.trim(),
+          youtube: form.creator_youtube.trim(),
         },
       });
       if (error) throw error;
@@ -261,6 +281,49 @@ export function SettingsPage() {
               <input className={input} placeholder="https://tiktok.com/@…" value={form.social_tiktok} onChange={e => patch({ social_tiktok: e.target.value })} />
               <p className="text-[11px] text-zinc-600 mt-1">Shown in the storefront's About panel; leave empty to hide a link.</p>
             </div>
+          </section>
+          )}
+
+          {/* Creator / founder — powers the brand↔person structured data */}
+          {tab === 'store' && (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400"><Star size={15} /> Creator / founder</h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                The person behind the brand. Their profiles are published as structured data
+                (schema.org founder) so Google & AI engines associate the brand with them, and appear
+                as a founder credit in the storefront's About panel.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Name</label>
+                <input className={input} placeholder="Hermela Medfu" value={form.creator_name} onChange={e => patch({ creator_name: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Alias / known as</label>
+                <input className={input} placeholder="Bazi" value={form.creator_alias} onChange={e => patch({ creator_alias: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">Role</label>
+              <input className={input} placeholder="Founder & Owner" value={form.creator_role} onChange={e => patch({ creator_role: e.target.value })} />
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">TikTok URL</label>
+                <input className={input} placeholder="https://tiktok.com/@…" value={form.creator_tiktok} onChange={e => patch({ creator_tiktok: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Instagram URL</label>
+                <input className={input} placeholder="https://instagram.com/…" value={form.creator_instagram} onChange={e => patch({ creator_instagram: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">YouTube URL</label>
+                <input className={input} placeholder="https://youtube.com/@…" value={form.creator_youtube} onChange={e => patch({ creator_youtube: e.target.value })} />
+              </div>
+            </div>
+            <p className="text-[11px] text-zinc-600">Use her real, verified profile links — these are what search engines trust to connect the brand to her.</p>
           </section>
           )}
 

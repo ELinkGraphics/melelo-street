@@ -1,13 +1,17 @@
 # Melelo Brands
 
-> Melelo Brands is a contemporary streetwear label from Addis Ababa, Ethiopia —
-> tees, hoodies and everyday pieces made for the modern explorer. Shop online at
+> Melelo Brands is a contemporary streetwear label from Addis Ababa, Ethiopia,
+> founded and owned by TikTok creator Hermela Medfu (known as "Bazi"). Tees,
+> hoodies and everyday pieces made for the modern explorer. Shop online at
 > https://melelo.shop with local delivery, bank transfer or Chapa (cards,
 > telebirr, mobile money), plus a Telegram Mini App shop.
 
 ## About
 
 - Brand: Melelo Brands, contemporary streetwear ("chaotic authenticity").
+- Founder & owner: Hermela Medfu, the Ethiopian TikTok creator also known as
+  "Bazi" — she is the face of and the person behind the brand. Her verified
+  social profiles are linked from the storefront's About panel.
 - Based in: Addis Ababa, Ethiopia.
 - Store: [Melelo Brands storefront](https://melelo.shop/) — browse the live
   collection (T-shirts, hoodies), pick a color and size, and order directly.

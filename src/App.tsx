@@ -54,12 +54,14 @@ function HeroImage({ src, placeholder, className }: { src: string; placeholder?:
 // Store info surfaced on the storefront (About panel, badges, legal pages) —
 // all admin-managed via Settings.
 type LegalKind = 'privacy' | 'terms' | 'returns';
+type CreatorInfo = { name?: string; alias?: string; role?: string; tiktok?: string; instagram?: string; youtube?: string };
 type StoreInfo = {
   name?: string; email?: string; phone?: string;
   socials?: { instagram?: string; twitter?: string; tiktok?: string };
   legal?: Partial<Record<LegalKind, string>>;
   shippingFlat?: number; freeShipThreshold?: number | null;
   telegramBot?: string;
+  creator?: CreatorInfo;
 };
 
 // Fallback policy text, shown until real policies are written in Admin → Settings.
@@ -356,6 +358,38 @@ function buildCatalogLd(categories: Category[], origin: string) {
   };
 }
 
+// Brand ↔ founder graph: links Melelo Brands to Hermela Medfu (Bazi) as its
+// founder, with her verified personal profiles as sameAs — this is what lets
+// Google and AI engines associate the brand with the creator.
+function buildBrandLd(store: StoreInfo, origin: string) {
+  const clean = (arr: (string | undefined)[]) => arr.filter((u): u is string => !!u && u.trim() !== '' && u.trim() !== '#');
+  const c = store.creator ?? {};
+  const brandSame = clean([store.socials?.instagram, store.socials?.twitter, store.socials?.tiktok]);
+  const personSame = clean([c.tiktok, c.instagram, c.youtube]);
+
+  const org: Record<string, unknown> = {
+    '@type': 'Organization',
+    '@id': origin + '/#organization',
+    name: store.name || 'Melelo Brands',
+    url: origin + '/',
+    logo: origin + '/logo.webp',
+    founder: { '@id': origin + '/#founder' },
+  };
+  if (brandSame.length) org.sameAs = brandSame;
+
+  const person: Record<string, unknown> = {
+    '@type': 'Person',
+    '@id': origin + '/#founder',
+    name: c.name || 'Hermela Medfu',
+    alternateName: c.alias || 'Bazi',
+    jobTitle: c.role || 'Founder & Owner',
+    worksFor: { '@id': origin + '/#organization' },
+  };
+  if (personSame.length) person.sameAs = personSame;
+
+  return { '@context': 'https://schema.org', '@graph': [org, person] };
+}
+
 export default function App() {
   const [activeSectionState, setActiveSectionState] = useState<'hero' | 'collection'>('hero');
   const activeSectionRef = useRef<'hero' | 'collection'>('hero');
@@ -382,7 +416,7 @@ export default function App() {
   const [store, setStore] = useState<StoreInfo>({});
   useEffect(() => {
     supabase?.from('settings')
-      .select('hero,store_name,contact_email,contact_phone,socials,legal,currency,shipping_flat,free_ship_threshold,telegram_bot_username')
+      .select('hero,store_name,contact_email,contact_phone,socials,legal,currency,shipping_flat,free_ship_threshold,telegram_bot_username,creator')
       .eq('id', 1).maybeSingle().then(({ data }) => {
         const s = data as any;
         if (!s) return;
@@ -400,6 +434,7 @@ export default function App() {
           shippingFlat: s.shipping_flat != null ? Number(s.shipping_flat) : undefined,
           freeShipThreshold: s.free_ship_threshold != null ? Number(s.free_ship_threshold) : null,
           telegramBot: s.telegram_bot_username ?? undefined,
+          creator: s.creator ?? undefined,
         });
       });
   }, []);
@@ -418,6 +453,19 @@ export default function App() {
     }
     el.textContent = JSON.stringify(ld);
   }, [categories, store]);
+
+  // Brand ↔ founder structured data (Melelo Brands ↔ Hermela Medfu / Bazi).
+  useEffect(() => {
+    const ld = buildBrandLd(store, window.location.origin);
+    let el = document.getElementById('mlb-brand-ld') as HTMLScriptElement | null;
+    if (!el) {
+      el = document.createElement('script');
+      el.id = 'mlb-brand-ld';
+      el.type = 'application/ld+json';
+      document.head.appendChild(el);
+    }
+    el.textContent = JSON.stringify(ld);
+  }, [store]);
 
   const category = categories[categoryIndex] ?? categories[0];
   const colors = category.designs[0].colors;             // color set is consistent within a category
@@ -1587,9 +1635,38 @@ export default function App() {
                 <div className="h-px w-full bg-white/15 mb-10" />
 
                 {/* Brand statement */}
-                <p className="text-white/80 text-lg md:text-xl leading-relaxed max-w-3xl mb-10">
+                <p className="text-white/80 text-lg md:text-xl leading-relaxed max-w-3xl mb-8">
                   Melelo Brands is a contemporary streetwear label born from the intersection of chaotic authenticity and meticulous craft. We design for the modern explorer — those who move between worlds without compromise.
                 </p>
+
+                {/* Founder credit — connects the brand to its creator */}
+                {store.creator?.name && (
+                  <div className="mb-10">
+                    <p className="text-white/60 text-sm">
+                      Founded by <span className="text-white font-semibold">{store.creator.name}</span>
+                      {store.creator.alias ? <span className="text-white/70"> — “{store.creator.alias}”</span> : null}
+                      {store.creator.role ? <span className="text-white/40"> · {store.creator.role}</span> : null}
+                    </p>
+                    {(() => {
+                      const links = ([
+                        ['TikTok', store.creator.tiktok],
+                        ['Instagram', store.creator.instagram],
+                        ['YouTube', store.creator.youtube],
+                      ] as const).filter(([, url]) => url && url !== '#');
+                      if (!links.length) return null;
+                      return (
+                        <div className="flex flex-wrap gap-3 mt-3">
+                          {links.map(([label, url]) => (
+                            <a key={label} href={url as string} target="_blank" rel="noreferrer"
+                              className="text-xs font-semibold uppercase tracking-wide text-white/80 hover:text-orange-400 border border-white/15 hover:border-orange-400/50 rounded-full px-3.5 py-1.5 transition-colors">
+                              {label}
+                            </a>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* Divider */}
                 <div className="h-px w-full bg-white/15 mb-10" />
