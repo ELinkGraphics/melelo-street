@@ -28,11 +28,18 @@
     <link rel="preconnect" href="https://altgclsxeslluxcqybnq.supabase.co" />
 
     <!-- The two images the storefront's first paint needs, fetched at top
-         priority. Added via script so /admin (which never shows them) doesn't
-         preload them — avoids wasted bandwidth + console warnings there. -->
+         priority. Added via script so /admin and receipt pages (which never
+         show them) don't preload them. When the admin has published a custom
+         hero, its URL is cached in localStorage (mlb_hero_v1) — preload THAT
+         instead of the bundled default so the correct image races the app. -->
     <script>
       if (!location.pathname.startsWith('/admin') && !location.search.includes('receipt=')) {
-        for (const href of ['/bg.webp', '/models/hero_model.webp']) {
+        let hero = '/models/hero_model.webp';
+        try {
+          const h = JSON.parse(localStorage.getItem('mlb_hero_v1') || 'null');
+          if (h && typeof h.image === 'string' && h.image.startsWith('http')) hero = h.image;
+        } catch (e) { /* private mode */ }
+        for (const href of ['/bg.webp', hero]) {
           const l = document.createElement('link');
           l.rel = 'preload'; l.as = 'image'; l.href = href; l.fetchPriority = 'high';
           document.head.appendChild(l);

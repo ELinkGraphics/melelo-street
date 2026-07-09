@@ -4,7 +4,7 @@ import {
   Image as ImageIcon, Monitor, Smartphone,
 } from 'lucide-react';
 import { requireSupabase } from '../lib/supabase';
-import { compressImage, IMMUTABLE_CACHE } from '../lib/imageUpload';
+import { compressImage, makePlaceholder, IMMUTABLE_CACHE } from '../lib/imageUpload';
 import { PageScaffold } from './ui';
 
 type Xform = { scale: number; x: number; y: number };
@@ -15,6 +15,7 @@ const NO_XFORM: Xform = { scale: 1, x: 0, y: 0 };
 // Mirrors the storefront's built-in defaults (App.tsx hero section).
 const DEFAULTS = {
   image: '/models/hero_model.webp',
+  placeholder: '', // tiny blurred data URI, generated at upload time
   title1: 'Melelo',
   title2: 'Brands',
   tagline: 'Chaotic authenticity.',
@@ -56,6 +57,7 @@ function normalize(raw: any): HeroCfg {
     : null;
   return {
     image: raw?.image ?? DEFAULTS.image,
+    placeholder: raw?.placeholder ?? '',
     title1: raw?.title1 ?? DEFAULTS.title1,
     title2: raw?.title2 ?? DEFAULTS.title2,
     tagline: raw?.tagline ?? DEFAULTS.tagline,
@@ -93,10 +95,19 @@ export function StorefrontPage() {
     try {
       const sb = requireSupabase();
       const { blob, ext, contentType } = await compressImage(file, 1600, 0.85);
+      // The hero is the first thing every visitor downloads — keep it lean.
+      // (Uploads are auto-converted to WebP; this only trips on exotic files.)
+      if (blob.size > 600 * 1024) {
+        throw new Error('That image is too heavy for the hero even after compression. Please use a simpler JPG/PNG/WebP (the upload converts it to WebP automatically).');
+      }
+      const placeholder = await makePlaceholder(file); // instant blurred preview for slow networks
       const path = `hero/hero-${Date.now()}.${ext}`;
       const { error: upErr } = await sb.storage.from('product-images').upload(path, blob, { cacheControl: IMMUTABLE_CACHE, contentType });
       if (upErr) throw upErr;
-      patch({ image: sb.storage.from('product-images').getPublicUrl(path).data.publicUrl });
+      patch({
+        image: sb.storage.from('product-images').getPublicUrl(path).data.publicUrl,
+        placeholder: placeholder ?? '',
+      });
     } catch (e: any) { setErr(e.message ?? String(e)); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
@@ -210,7 +221,7 @@ export function StorefrontPage() {
                 </button>
                 <p className="text-[11px] text-zinc-600 break-all">Current: {cfg.image}</p>
                 {cfg.image !== DEFAULTS.image && (
-                  <button onClick={() => patch({ image: DEFAULTS.image })} className="text-xs font-semibold text-zinc-400 hover:text-white inline-flex items-center gap-1">
+                  <button onClick={() => patch({ image: DEFAULTS.image, placeholder: '' })} className="text-xs font-semibold text-zinc-400 hover:text-white inline-flex items-center gap-1">
                     <RotateCcw size={12} /> Restore original image
                   </button>
                 )}

@@ -11,9 +11,45 @@ import { fmtMoney, moneySymbol, setCurrencyCode } from './lib/currency';
 // stored a single scale/x/y at the top level and apply to both.
 type HeroXform = { scale?: number; x?: number; y?: number };
 type HeroCfg = {
-  image?: string; title1?: string; title2?: string; tagline?: string;
+  image?: string; placeholder?: string; title1?: string; title2?: string; tagline?: string;
   desktop?: HeroXform; mobile?: HeroXform;
 } & HeroXform;
+
+// Last-published hero config, cached so repeat visits paint the CORRECT hero
+// from the first frame instead of flashing the bundled default until the
+// settings query returns. index.html reads the same key to preload the image.
+const HERO_CACHE_KEY = 'mlb_hero_v1';
+function loadCachedHero(): HeroCfg {
+  try { return JSON.parse(localStorage.getItem(HERO_CACHE_KEY) || 'null') ?? {}; }
+  catch { return {}; }
+}
+
+// Blur-up hero: the tiny placeholder (data URI riding inside the hero config)
+// shows instantly, the full image fades in over it once decoded — so slow
+// networks see the right picture immediately, just soft instead of empty.
+function HeroImage({ src, placeholder, className }: { src: string; placeholder?: string; className: string }) {
+  const [ready, setReady] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setReady(imgRef.current?.complete ?? false);
+  }, [src]);
+  return (
+    <div className="relative w-full h-full">
+      {placeholder && !ready && (
+        <img src={placeholder} alt="" aria-hidden className={`${className} absolute inset-0 blur-lg`} />
+      )}
+      <img
+        ref={imgRef}
+        src={src}
+        alt="Hero model"
+        fetchPriority="high"
+        decoding="async"
+        onLoad={() => setReady(true)}
+        className={`${className} relative transition-opacity duration-500 ${ready || !placeholder ? 'opacity-100' : 'opacity-0'}`}
+      />
+    </div>
+  );
+}
 
 // Store info surfaced on the storefront (About panel, badges, legal pages) —
 // all admin-managed via Settings.
@@ -300,7 +336,7 @@ export default function App() {
   // Admin-managed hero + store info (contact, socials, legal, currency,
   // shipping) — one settings fetch feeds the hero, the About panel, the
   // trust badges and the money formatter.
-  const [hero, setHero] = useState<HeroCfg>({});
+  const [hero, setHero] = useState<HeroCfg>(loadCachedHero);
   const [store, setStore] = useState<StoreInfo>({});
   useEffect(() => {
     supabase?.from('settings')
@@ -308,7 +344,10 @@ export default function App() {
       .eq('id', 1).maybeSingle().then(({ data }) => {
         const s = data as any;
         if (!s) return;
-        if (s.hero) setHero(s.hero as HeroCfg);
+        if (s.hero) {
+          setHero(s.hero as HeroCfg);
+          try { localStorage.setItem(HERO_CACHE_KEY, JSON.stringify(s.hero)); } catch { /* private mode */ }
+        }
         if (s.currency) setCurrencyCode(s.currency);
         setStore({
           name: s.store_name ?? undefined,
@@ -788,7 +827,11 @@ export default function App() {
                   ? { transform: `translate(${x}px, ${y}px) scale(${s})` }
                   : undefined}
               >
-                <img src={hero.image ?? '/models/hero_model.webp'} fetchPriority="high" decoding="async" className="w-full h-full object-contain object-center drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)] scale-[3.2] translate-y-6 md:object-bottom md:origin-bottom md:scale-[2.5] md:-translate-x-24 md:translate-y-12" />
+                <HeroImage
+                  src={hero.image ?? '/models/hero_model.webp'}
+                  placeholder={hero.placeholder || undefined}
+                  className="w-full h-full object-contain object-center drop-shadow-[0_12px_30px_rgba(0,0,0,0.45)] scale-[3.2] translate-y-6 md:object-bottom md:origin-bottom md:scale-[2.5] md:-translate-x-24 md:translate-y-12"
+                />
               </div>
                 );
               })()}
