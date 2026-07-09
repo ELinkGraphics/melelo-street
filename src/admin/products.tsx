@@ -5,7 +5,7 @@ import { compressImage, IMMUTABLE_CACHE } from '../lib/imageUpload';
 import { PageScaffold, EmptyState } from './ui';
 
 const SIZES = ['S', 'M', 'L', 'XL'];
-const money = (n: number) => `$${n.toFixed(2)}`;
+import { fmtMoney as money } from '../lib/currency';
 const slugify = (s: string) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -209,7 +209,7 @@ export function ProductsPage() {
       ) : rows.length === 0 ? (
         <EmptyState icon={Package} title="No products" hint="Create your first product, or run the seed migration." />
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
               <tr>

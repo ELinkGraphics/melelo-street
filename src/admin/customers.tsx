@@ -5,7 +5,7 @@ import { PageScaffold, EmptyState } from './ui';
 import { StatusPill } from './pages';
 import type { DbOrder } from '../lib/types';
 
-const money = (n: number) => `$${Number(n).toFixed(2)}`;
+import { fmtMoney as money } from '../lib/currency';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 type Customer = {
@@ -73,7 +73,7 @@ export function CustomersPage() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={Users} title="No customers yet" hint="Shoppers appear here after their first order." />
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
               <tr>

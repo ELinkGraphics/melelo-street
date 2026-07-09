@@ -266,7 +266,7 @@ export function SettingsPage() {
             <div>
               <label className="block text-xs text-zinc-500 mb-1.5">Currency code</label>
               <input className={input} value={form.currency} onChange={e => patch({ currency: e.target.value.toUpperCase() })} maxLength={3} />
-              <p className="text-[11px] text-zinc-600 mt-1">Storefront prices, emails and Chapa charges all follow this (e.g. ETB, USD).</p>
+              <p className="text-[11px] text-zinc-400 mt-1">Storefront prices, emails and Chapa charges all follow this (e.g. ETB, USD).</p>
             </div>
             <div>
               <label className="block text-xs text-zinc-500 mb-1.5">Instagram URL</label>
@@ -279,7 +279,7 @@ export function SettingsPage() {
             <div>
               <label className="block text-xs text-zinc-500 mb-1.5">TikTok URL</label>
               <input className={input} placeholder="https://tiktok.com/@…" value={form.social_tiktok} onChange={e => patch({ social_tiktok: e.target.value })} />
-              <p className="text-[11px] text-zinc-600 mt-1">Shown in the storefront's About panel; leave empty to hide a link.</p>
+              <p className="text-[11px] text-zinc-400 mt-1">Shown in the storefront's About panel; leave empty to hide a link.</p>
             </div>
           </section>
           )}
@@ -323,7 +323,7 @@ export function SettingsPage() {
                 <input className={input} placeholder="https://youtube.com/@…" value={form.creator_youtube} onChange={e => patch({ creator_youtube: e.target.value })} />
               </div>
             </div>
-            <p className="text-[11px] text-zinc-600">Use her real, verified profile links — these are what search engines trust to connect the brand to her.</p>
+            <p className="text-[11px] text-zinc-400">Use her real, verified profile links — these are what search engines trust to connect the brand to her.</p>
           </section>
           )}
 
@@ -398,13 +398,13 @@ export function SettingsPage() {
                 <label className="block text-xs text-zinc-500 mb-1.5">Payment reminder after (minutes, 0 = off)</label>
                 <input className={input} type="number" min={0} step={5} value={form.payment_reminder_minutes}
                   onChange={e => patch({ payment_reminder_minutes: Number(e.target.value) })} />
-                <p className="text-[11px] text-zinc-600 mt-1">Unpaid Chapa orders get a "complete your payment" nudge (Telegram + email) once.</p>
+                <p className="text-[11px] text-zinc-400 mt-1">Unpaid Chapa orders get a "complete your payment" nudge (Telegram + email) once.</p>
               </div>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1.5">Cancel unpaid after (hours, 0 = never)</label>
                 <input className={input} type="number" min={0} step={1} value={form.payment_expiry_hours}
                   onChange={e => patch({ payment_expiry_hours: Number(e.target.value) })} />
-                <p className="text-[11px] text-zinc-600 mt-1">Expired orders are cancelled automatically and their reserved stock is released.</p>
+                <p className="text-[11px] text-zinc-400 mt-1">Expired orders are cancelled automatically and their reserved stock is released.</p>
               </div>
             </div>
             <ChapaKeyManager />
@@ -444,7 +444,7 @@ export function SettingsPage() {
                 <label className="block text-xs text-zinc-500 mb-1.5">From address (save with Save)</label>
                 <input className={input} value={form.email_from} placeholder="Melelo Brands <orders@yourdomain.com>"
                   onChange={e => patch({ email_from: e.target.value })} />
-                <p className="text-[11px] text-zinc-600 mt-1">Custom senders need a verified domain in Resend; until then use onboarding@resend.dev.</p>
+                <p className="text-[11px] text-zinc-400 mt-1">Custom senders need a verified domain in Resend; until then use onboarding@resend.dev.</p>
               </div>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1.5">Site URL (used for tracking links in emails)</label>
@@ -525,13 +525,13 @@ export function SettingsPage() {
                 <label className="block text-xs text-zinc-500 mb-1.5">Reward for approved review (%, 0 = off)</label>
                 <input className={input} type="number" min={0} max={100} step={5} value={form.review_reward_percent}
                   onChange={e => patch({ review_reward_percent: Number(e.target.value) })} />
-                <p className="text-[11px] text-zinc-600 mt-1">Approving a review mints a single-use discount code and sends it to the customer.</p>
+                <p className="text-[11px] text-zinc-400 mt-1">Approving a review mints a single-use discount code and sends it to the customer.</p>
               </div>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1.5">Review reminder after (days, 0 = off)</label>
                 <input className={input} type="number" min={0} step={1} value={form.review_reminder_days}
                   onChange={e => patch({ review_reminder_days: Number(e.target.value) })} />
-                <p className="text-[11px] text-zinc-600 mt-1">Delivered orders with no review get one "how's the fit?" nudge (Telegram + email).</p>
+                <p className="text-[11px] text-zinc-400 mt-1">Delivered orders with no review get one "how's the fit?" nudge (Telegram + email).</p>
               </div>
             </div>
           </section>
@@ -625,7 +625,7 @@ function TelegramTokenManager() {
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {status?.set ? 'Replace token' : 'Save token'}
         </button>
       </div>
-      <p className="text-[11px] text-zinc-600">Stored server-side in a private schema — never exposed to the browser or the API after saving.</p>
+      <p className="text-[11px] text-zinc-400">Stored server-side in a private schema — never exposed to the browser or the API after saving.</p>
     </div>
   );
 }
@@ -680,7 +680,7 @@ function ResendKeyManager() {
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {status?.set ? 'Replace key' : 'Save key'}
         </button>
       </div>
-      <p className="text-[11px] text-zinc-600">Stored server-side in a private schema — never exposed to the browser or the API after saving.</p>
+      <p className="text-[11px] text-zinc-400">Stored server-side in a private schema — never exposed to the browser or the API after saving.</p>
     </div>
   );
 }
@@ -738,7 +738,7 @@ function ChapaKeyManager() {
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {status?.set ? 'Replace key' : 'Save key'}
         </button>
       </div>
-      <p className="text-[11px] text-zinc-600">Stored server-side in a private schema — it is never exposed to the browser or the API after saving.</p>
+      <p className="text-[11px] text-zinc-400">Stored server-side in a private schema — it is never exposed to the browser or the API after saving.</p>
     </div>
   );
 }

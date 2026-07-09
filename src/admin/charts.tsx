@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { moneySymbol } from '../lib/currency';
 
 // Chart primitives for the admin dashboard (dark surface zinc-950).
 // Palette validated with the dataviz six-checks validator for dark mode:
@@ -7,7 +8,7 @@ import React, { useState } from 'react';
 export const SERIES_1 = '#ea580c';
 export const SERIES_2 = '#0284c7';
 
-const fmtMoney = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const fmtMoney = (n: number) => `${moneySymbol()}${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 // Top-rounded bar path (4px data-end radius, square baseline corners).
 function barPath(x: number, y: number, w: number, h: number, r: number): string {

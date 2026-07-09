@@ -66,7 +66,7 @@ export function StatCard({ label, value, sub, accent }: { label: string; value: 
   return (
     <div className={`rounded-2xl border p-5 ${accent ? 'border-orange-500/40 bg-orange-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
       <p className="text-xs uppercase tracking-wider text-zinc-400">{label}</p>
-      <p className="text-2xl font-bold mt-2 leading-none">{value}</p>
+      <p className="text-2xl font-bold mt-2 leading-none tabular-nums">{value}</p>
       {sub && <p className="text-xs text-zinc-500 mt-1.5">{sub}</p>}
     </div>
   );
@@ -98,7 +98,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 export function AdminLayout({ email, onSignOut }: { email?: string; onSignOut: () => void }) {
   const [drawer, setDrawer] = useState(false);
   return (
-    <div className="min-h-[100dvh] bg-zinc-950 text-white flex">
+    <div className="admin-root min-h-[100dvh] bg-zinc-950 text-white flex">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col w-60 shrink-0 border-r border-white/10 bg-zinc-950">
         <div className="flex items-center gap-2 px-5 h-16 border-b border-white/10">

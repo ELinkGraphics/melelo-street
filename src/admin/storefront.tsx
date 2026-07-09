@@ -219,7 +219,7 @@ export function StorefrontPage() {
                   {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
                   {uploading ? 'Uploading…' : 'Upload new hero image'}
                 </button>
-                <p className="text-[11px] text-zinc-600 break-all">Current: {cfg.image}</p>
+                <p className="text-[11px] text-zinc-400 break-all">Current: {cfg.image}</p>
                 {cfg.image !== DEFAULTS.image && (
                   <button onClick={() => patch({ image: DEFAULTS.image, placeholder: '' })} className="text-xs font-semibold text-zinc-400 hover:text-white inline-flex items-center gap-1">
                     <RotateCcw size={12} /> Restore original image
@@ -246,7 +246,7 @@ export function StorefrontPage() {
                   onChange={v => patchXform({ x: v })} onReset={() => patchXform({ x: 0 })} />
                 <Slider label="Vertical (− up · + down)" value={xf.y} min={-250} max={250} step={5} unit="px"
                   onChange={v => patchXform({ y: v })} onReset={() => patchXform({ y: 0 })} />
-                <p className="text-[11px] text-zinc-600">
+                <p className="text-[11px] text-zinc-400">
                   Desktop and mobile are adjusted independently — switch the device tab above to tune the other.
                 </p>
               </section>

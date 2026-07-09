@@ -7,7 +7,7 @@ import { PageScaffold, EmptyState } from './ui';
 import { StatusPill } from './pages';
 import type { DbOrder, DbOrderItem, DbOrderEvent, FulfillmentStatus } from '../lib/types';
 
-const money = (n: number) => `$${Number(n).toFixed(2)}`;
+import { fmtMoney as money } from '../lib/currency';
 const fmtDateTime = (s: string) =>
   new Date(s).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -92,7 +92,7 @@ export function OrdersPage() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={ShoppingBag} title="No orders here" hint={tab === 'all' ? 'Orders placed on the storefront appear here in real money terms.' : 'Nothing matches this filter.'} />
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
               <tr>
@@ -206,14 +206,17 @@ function OrderDrawer({
     await addEvent('confirmed', 'Payment approved — order confirmed');
   });
 
-  const reject = () => act(async () => {
-    const { error } = await sb().from('orders').update({
-      payment_status: 'failed', fulfillment_status: 'cancelled',
-    }).eq('id', order.id);
-    if (error) throw error;
-    await restoreStock();
-    await addEvent('cancelled', 'Payment slip rejected — stock released');
-  });
+  const reject = () => {
+    if (!window.confirm('Reject this payment slip? The order is cancelled, its reserved stock is released, and the customer is notified. This cannot be undone.')) return;
+    act(async () => {
+      const { error } = await sb().from('orders').update({
+        payment_status: 'failed', fulfillment_status: 'cancelled',
+      }).eq('id', order.id);
+      if (error) throw error;
+      await restoreStock();
+      await addEvent('cancelled', 'Payment slip rejected — stock released');
+    });
+  };
 
   const advance = (to: FulfillmentStatus) => act(async () => {
     const { error } = await sb().from('orders').update({ fulfillment_status: to }).eq('id', order.id);
@@ -221,13 +224,16 @@ function OrderDrawer({
     await addEvent(to, `Marked as ${LABELS[to].toLowerCase()}`);
   });
 
-  const cancel = () => act(async () => {
-    const { error } = await sb().from('orders').update({ fulfillment_status: 'cancelled' }).eq('id', order.id);
-    if (error) throw error;
-    // Only restore if stock wasn't already released by a payment rejection.
-    if (order.payment_status !== 'failed') await restoreStock();
-    await addEvent('cancelled', 'Order cancelled by admin — stock released');
-  });
+  const cancel = () => {
+    if (!window.confirm('Cancel this order? Reserved stock is released and the customer is notified. This cannot be undone.')) return;
+    act(async () => {
+      const { error } = await sb().from('orders').update({ fulfillment_status: 'cancelled' }).eq('id', order.id);
+      if (error) throw error;
+      // Only restore if stock wasn't already released by a payment rejection.
+      if (order.payment_status !== 'failed') await restoreStock();
+      await addEvent('cancelled', 'Order cancelled by admin — stock released');
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">

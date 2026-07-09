@@ -25,5 +25,5 @@ export function currencyCode() {
 }
 
 export function fmtMoney(n: number) {
-  return `${symbol}${n.toFixed(2)}`;
+  return `${symbol}${Number(n).toFixed(2)}`;
 }

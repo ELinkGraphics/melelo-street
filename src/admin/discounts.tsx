@@ -4,7 +4,7 @@ import { requireSupabase } from '../lib/supabase';
 import { PageScaffold, EmptyState } from './ui';
 import type { DbDiscount } from '../lib/types';
 
-const money = (n: number) => `$${Number(n).toFixed(2)}`;
+import { fmtMoney as money } from '../lib/currency';
 const input = 'w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
 
 type Form = {
@@ -85,7 +85,7 @@ export function DiscountsPage() {
       ) : rows.length === 0 ? (
         <EmptyState icon={Ticket} title="No discount codes" hint="Create a code like WELCOME10 — customers enter it at checkout and the server applies it." />
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
               <tr>

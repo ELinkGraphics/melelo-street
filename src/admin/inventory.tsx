@@ -82,7 +82,7 @@ export function InventoryPage() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={Boxes} title={lowOnly ? 'Nothing is low on stock' : 'No inventory rows'} hint={lowOnly ? 'All sizes are above their thresholds.' : 'Add products with variants to track stock.'} />
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
               <tr>

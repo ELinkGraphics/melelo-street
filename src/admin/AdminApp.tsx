@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ShieldCheck, LogOut, Loader2, Database } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { setCurrencyCode } from '../lib/currency';
 import { AdminLayout, FullscreenLoader } from './ui';
 import { Overview, Payments } from './pages';
 import { ProductsPage } from './products';
@@ -51,8 +52,22 @@ function useAdminAuth() {
 export default function AdminApp() {
   const auth = useAdminAuth();
 
+  // Load the store currency once so every admin money value matches the
+  // storefront/emails (they all read from settings.currency). Gate render so
+  // figures never flash the wrong symbol.
+  const [currencyReady, setCurrencyReady] = useState(false);
+  useEffect(() => {
+    const sb = supabase;
+    if (!sb) { setCurrencyReady(true); return; }
+    sb.from('settings').select('currency').eq('id', 1).maybeSingle().then(({ data }) => {
+      const c = (data as any)?.currency;
+      if (c) setCurrencyCode(c);
+      setCurrencyReady(true);
+    });
+  }, []);
+
   if (!isSupabaseConfigured) return <SetupNotice />;
-  if (auth.status === 'loading') return <FullscreenLoader label="Checking access…" />;
+  if (auth.status === 'loading' || !currencyReady) return <FullscreenLoader label="Checking access…" />;
   if (auth.status === 'signedout') return <Login />;
   if (!auth.isAdmin) return <NotAuthorized email={auth.user?.email} onSignOut={auth.signOut} />;
 
@@ -80,7 +95,7 @@ export default function AdminApp() {
 // ---------------------------------------------------------------------------
 function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-[100dvh] bg-zinc-950 text-white flex items-center justify-center p-6">
+    <div className="admin-root min-h-[100dvh] bg-zinc-950 text-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <img src="/logo.webp" alt="Melelo" className="h-7 object-contain" />

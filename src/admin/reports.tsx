@@ -4,7 +4,7 @@ import { requireSupabase } from '../lib/supabase';
 import { PageScaffold, EmptyState } from './ui';
 import { Bars, HBarList, ChartCard, SERIES_1, SERIES_2, type BarDatum } from './charts';
 
-const money = (n: number) => `$${Number(n).toFixed(2)}`;
+import { fmtMoney as money } from '../lib/currency';
 
 type Row = {
   id: string; human_id: string; total: number; placed_at: string;

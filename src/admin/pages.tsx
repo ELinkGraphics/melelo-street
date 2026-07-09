@@ -20,7 +20,7 @@ function useAsync<T>(fn: () => Promise<T>, deps: React.DependencyList = []) {
   return state;
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`;
+import { fmtMoney as money } from '../lib/currency';
 
 const STATUS_TONE: Record<string, string> = {
   pending_approval: 'bg-amber-500/15 text-amber-400',
@@ -114,7 +114,7 @@ export function Overview() {
 
 function OrdersTable({ rows }: { rows: DbOrder[] }) {
   return (
-    <div className="rounded-2xl border border-white/10 overflow-hidden">
+    <div className="rounded-2xl border border-white/10 overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
           <tr>
@@ -167,7 +167,7 @@ export function Payments() {
       ) : rows.length === 0 ? (
         <EmptyState icon={Wallet} title="No gateway payments yet" hint="Verified Chapa transactions appear here. Enable Chapa in Settings, then pay for an order at checkout." />
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
               <tr>
