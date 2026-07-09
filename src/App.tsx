@@ -5,6 +5,7 @@ import { fetchCatalog, type Category, type Design, type ColorVariant } from './l
 import { supabase } from './lib/supabase';
 import { initTelegram } from './lib/telegram';
 import { fmtMoney, moneySymbol, setCurrencyCode, currencyCode } from './lib/currency';
+import { AdSlot, ADSENSE } from './lib/adsense';
 
 // Admin-managed hero config (settings.hero); every field optional — defaults
 // below match the built-in design. Transforms are per device; legacy configs
@@ -1579,6 +1580,9 @@ export default function App() {
                     ))}
                   </div>
                 )}
+
+                {/* Sponsored — AdSense (inert until a slot is configured) */}
+                <AdSlot slot={ADSENSE.slots.search} className="pb-20 max-w-2xl mx-auto" />
               </div>
             </div>
           </motion.div>
@@ -1711,6 +1715,9 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* Sponsored — AdSense (inert until a slot is configured) */}
+                <AdSlot slot={ADSENSE.slots.about} className="mb-8" />
 
                 {/* Divider */}
                 <div className="h-px w-full bg-white/15 mb-8" />
