@@ -14,6 +14,12 @@
          stays ad-free and fast. -->
     <meta name="google-adsense-account" content="ca-pub-1068851952133830" />
 
+    <!-- TEMPORARY — for AdSense site review only. Loading the script here makes
+         the ad code crawlable on every page so Google can approve the site.
+         AFTER APPROVAL: delete this one <script> line and fill the slot ids in
+         src/lib/adsense.tsx, so ads load lazily only in About + Search again. -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1068851952133830" crossorigin="anonymous"></script>
+
     <!-- Structured data for search + AI crawlers. Static Organization/WebSite
          here; live Product/ItemList data is injected at runtime from the
          catalog (App.tsx), which JS-rendering crawlers like Googlebot execute. -->

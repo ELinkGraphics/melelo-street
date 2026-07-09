@@ -24,6 +24,9 @@ let scriptRequested = false;
 function loadAdSenseScript() {
   if (scriptRequested || typeof document === 'undefined') return;
   scriptRequested = true;
+  // The temporary approval script in index.html may already be present — don't
+  // add a second one (duplicate adsbygoogle.js throws on push()).
+  if (document.querySelector('script[src*="adsbygoogle.js"]')) return;
   const s = document.createElement('script');
   s.async = true;
   s.crossOrigin = 'anonymous';
