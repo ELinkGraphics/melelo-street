@@ -20,6 +20,7 @@ type SettingsForm = {
   telegram_enabled: boolean;
   telegram_bot_username: string;
   telegram_admin_chat_id: string;
+  vendor_telegram_chat_id: string;
   payment_reminder_minutes: number;
   payment_expiry_hours: number;
   review_reward_percent: number;
@@ -85,6 +86,7 @@ export function SettingsPage() {
         telegram_enabled: Boolean(s?.telegram_enabled),
         telegram_bot_username: s?.telegram_bot_username ?? '',
         telegram_admin_chat_id: s?.telegram_admin_chat_id ?? '',
+        vendor_telegram_chat_id: s?.vendor_telegram_chat_id ?? '',
         payment_reminder_minutes: Number(s?.payment_reminder_minutes ?? 30),
         payment_expiry_hours: Number(s?.payment_expiry_hours ?? 24),
         review_reward_percent: Number(s?.review_reward_percent ?? 10),
@@ -173,6 +175,7 @@ export function SettingsPage() {
         telegram_enabled: form.telegram_enabled,
         telegram_bot_username: form.telegram_bot_username.trim().replace(/^@/, '') || null,
         telegram_admin_chat_id: form.telegram_admin_chat_id.trim() || null,
+        vendor_telegram_chat_id: form.vendor_telegram_chat_id.trim() || null,
         payment_reminder_minutes: Math.max(0, Math.round(form.payment_reminder_minutes) || 0),
         payment_expiry_hours: Math.max(0, Math.round(form.payment_expiry_hours) || 0),
         review_reward_percent: Math.min(100, Math.max(0, Math.round(form.review_reward_percent) || 0)),
@@ -494,6 +497,12 @@ export function SettingsPage() {
                 <label className="block text-xs text-zinc-500 mb-1.5">Your admin chat id (new-order alerts)</label>
                 <input className={input} value={form.telegram_admin_chat_id} placeholder="send /id to the bot to get it"
                   onChange={e => patch({ telegram_admin_chat_id: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1.5">Vendor chat id (production job alerts)</label>
+                <input className={input} value={form.vendor_telegram_chat_id} placeholder="vendor sends /id to the bot"
+                  onChange={e => patch({ vendor_telegram_chat_id: e.target.value })} />
+                <p className="text-[11px] text-zinc-400 mt-1">Your production partner gets a DM when you send a job; you get one when he updates it.</p>
               </div>
             </div>
             <TelegramTokenManager />

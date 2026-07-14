@@ -7,6 +7,9 @@ import './index.css';
 // Admin is code-split so the storefront never downloads the dashboard bundle.
 const AdminApp = lazy(() => import('./admin/AdminApp.tsx'));
 
+// Vendor production dashboard — code-split; only the production partner uses it.
+const VendorApp = lazy(() => import('./vendor/VendorApp.tsx'));
+
 // Printable receipt (/?receipt=<id>:<token>) — a standalone light document,
 // also code-split since it's only opened from emails/Telegram.
 const ReceiptPage = lazy(() => import('./receipt.tsx'));
@@ -30,6 +33,15 @@ createRoot(document.getElementById('root')!).render(
           element={
             <Suspense fallback={<div className="min-h-[100dvh] bg-zinc-950" />}>
               <AdminApp />
+            </Suspense>
+          }
+        />
+        {/* Vendor production dashboard — guarded inside VendorApp */}
+        <Route
+          path="/vendor/*"
+          element={
+            <Suspense fallback={<div className="min-h-[100dvh] bg-zinc-950" />}>
+              <VendorApp />
             </Suspense>
           }
         />

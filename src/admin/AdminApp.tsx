@@ -15,6 +15,7 @@ import { SettingsPage } from './settings';
 import { StorefrontPage } from './storefront';
 import { MessagesPage } from './messages';
 import { ReviewsPage } from './reviews';
+import { ProductionPage } from './production';
 
 type AuthState = {
   status: 'loading' | 'signedout' | 'signedin';
@@ -79,6 +80,7 @@ export default function AdminApp() {
         <Route path="payments" element={<Payments />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
+        <Route path="production" element={<ProductionPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="reviews" element={<ReviewsPage />} />

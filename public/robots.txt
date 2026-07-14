@@ -6,6 +6,7 @@
 User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /vendor
 Disallow: /*?track=
 Disallow: /*?receipt=
 Disallow: /*?chapa_order=
@@ -23,6 +24,7 @@ User-agent: Applebot-Extended
 User-agent: CCBot
 Allow: /
 Disallow: /admin
+Disallow: /vendor
 Disallow: /*?track=
 Disallow: /*?receipt=
 Disallow: /*?chapa_order=

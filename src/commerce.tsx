@@ -4,12 +4,13 @@ import {
   X, Plus, Minus, Trash2, ShoppingBag, CheckCircle2,
   Package, Truck, MapPin, ChevronLeft, ChevronRight,
   Loader2, ClipboardList, Landmark, Upload, ReceiptText, BadgeCheck, Wallet,
-  XCircle, Star, Camera, Copy, Check, Send as SendIcon,
+  XCircle, Star, Camera, Copy, Check, Send as SendIcon, UserRound, LogOut, Mail,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { compressImage, IMMUTABLE_CACHE } from './lib/imageUpload';
 import { getTgInitData, tgUser } from './lib/telegram';
 import { fmtMoney, setCurrencyCode } from './lib/currency';
+import { useCustomer, sendCode, verifyCode, customerSignOut, claimAndFetch, type CustomerSession } from './lib/customerAuth';
 
 // ---------------------------------------------------------------------------
 // Types & model
@@ -152,6 +153,21 @@ export interface Commerce {
   // Merge externally-discovered orders (e.g. Telegram-linked history) into the
   // local stub list; dedupes by id and persists.
   mergeOrders: (incoming: OrderStub[]) => void;
+  // Signed-in customer account (email-code auth); null when signed out.
+  customer: CustomerSession;
+}
+
+// Server order rows (get_my_orders / get_telegram_orders shape) → local stubs.
+function rowsToStubs(rows: any[]): OrderStub[] {
+  return rows.map(r => ({
+    id: r.id,
+    humanId: r.human_id,
+    token: r.token,
+    total: Number(r.total),
+    placedAt: new Date(r.placed_at).getTime(),
+    address: r.address ?? '',
+    items: [],
+  }));
 }
 
 export function useCommerce(): Commerce {
@@ -161,6 +177,7 @@ export function useCommerce(): Commerce {
   const [view, setView] = useState<CommerceView>('closed');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const customer = useCustomer();
 
   useEffect(() => { try { localStorage.setItem('mlb_cart', JSON.stringify(cart)); } catch { /* quota */ } }, [cart]);
   useEffect(() => { try { localStorage.setItem('mlb_orders_v2', JSON.stringify(orders)); } catch { /* quota */ } }, [orders]);
@@ -199,6 +216,8 @@ export function useCommerce(): Commerce {
     }
     setView('processing');
     try {
+      // Remembered for the post-purchase "create an account" nudge.
+      try { sessionStorage.setItem('mlb_last_email', email); } catch { /* private mode */ }
       let path: string | null = null;
       if (method === 'bank_slip') {
         if (!slipFile) throw new Error('A payment slip is required.');
@@ -313,7 +332,7 @@ export function useCommerce(): Commerce {
 
   return {
     cart, orders, view, setView, activeOrderId, cartCount, cartTotal,
-    addToCart, updateQty, removeItem, submitOrder, lastError, mergeOrders,
+    addToCart, updateQty, removeItem, submitOrder, lastError, mergeOrders, customer,
     openCart: () => setView('cart'),
     openAccount: () => setView('account'),
     openTracking: (orderId) => { setActiveOrderId(orderId); setView('tracking'); },
@@ -446,6 +465,19 @@ function CheckoutView({ c }: { c: Commerce }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Signed-in customers: prefill contact fields from the account (still editable).
+  useEffect(() => {
+    const cust = c.customer;
+    if (!cust || !supabase) return;
+    if (cust.email && !email.trim()) setEmail(cust.email);
+    supabase.from('profiles').select('full_name,phone').eq('id', cust.userId).maybeSingle().then(({ data }) => {
+      const p = data as any;
+      if (p?.full_name && !name.trim()) setName(p.full_name);
+      if (p?.phone && !phone.trim()) setPhone(p.phone);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.customer?.userId]);
 
   // Discount code entry — validated server-side via the validate_discount RPC.
   const [code, setCode] = useState('');
@@ -694,6 +726,100 @@ function TelegramConnect({ bot, token }: { bot: string; token: string }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Customer account — passwordless email-code sign-in (shared by the success
+// nudge and the account panel). After sign-in, the caller claims this
+// device's guest orders + all orders placed with the verified email.
+// ---------------------------------------------------------------------------
+function EmailCodeSignIn({ initialEmail = '', onDone }: { initialEmail?: string; onDone?: () => void }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const field = 'w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-500';
+
+  const send = async () => {
+    if (!email.trim() || busy) return;
+    setBusy(true); setErr(null);
+    try { await sendCode(email); setStep('code'); }
+    catch (e: any) { setErr(e?.message ?? 'Could not send the code.'); }
+    finally { setBusy(false); }
+  };
+
+  const verify = async () => {
+    if (code.trim().length < 6 || busy) return;
+    setBusy(true); setErr(null);
+    try { await verifyCode(email, code); onDone?.(); }
+    catch (e: any) { setErr(e?.message ?? 'Wrong or expired code.'); setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      {step === 'email' ? (
+        <div className="flex gap-2">
+          <input className={field} type="email" placeholder="you@email.com" autoComplete="email"
+            value={email} onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') send(); }} />
+          <button onClick={send} disabled={busy || !email.trim()}
+            className="shrink-0 inline-flex items-center gap-1.5 bg-orange-500 text-black font-bold text-sm px-4 rounded-xl hover:bg-orange-400 transition-colors disabled:opacity-40">
+            {busy ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} Send code
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-zinc-400">We emailed a 6-digit code to <span className="text-white">{email}</span>.</p>
+          <div className="flex gap-2">
+            <input className={`${field} tracking-[0.4em] text-center font-mono`} inputMode="numeric" maxLength={6} placeholder="••••••"
+              value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => { if (e.key === 'Enter') verify(); }} autoFocus />
+            <button onClick={verify} disabled={busy || code.trim().length < 6}
+              className="shrink-0 inline-flex items-center gap-1.5 bg-orange-500 text-black font-bold text-sm px-4 rounded-xl hover:bg-orange-400 transition-colors disabled:opacity-40">
+              {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Verify
+            </button>
+          </div>
+          <button onClick={() => { setStep('email'); setCode(''); setErr(null); }} className="text-xs text-zinc-500 hover:text-zinc-300">
+            Different email / resend
+          </button>
+        </>
+      )}
+      {err && <p className="text-xs text-red-400">{err}</p>}
+    </div>
+  );
+}
+
+// Post-purchase nudge: turn the guest order into an account in two taps.
+function AccountNudge({ c }: { c: Commerce }) {
+  const [done, setDone] = useState(false);
+  const initialEmail = (() => {
+    try { return sessionStorage.getItem('mlb_last_email') ?? ''; } catch { return ''; }
+  })();
+
+  if (done) {
+    return (
+      <div className="w-full rounded-2xl border border-green-500/30 bg-green-500/10 p-4 text-left">
+        <p className="text-sm font-semibold text-green-300 flex items-center gap-2"><CheckCircle2 size={16} /> Account ready</p>
+        <p className="text-xs text-zinc-300 mt-1">Your orders now follow you — sign in with your email code on any device.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="w-full rounded-2xl border border-white/15 bg-white/5 p-4 text-left">
+      <p className="text-sm font-semibold flex items-center gap-2"><UserRound size={16} className="text-orange-400" /> Save your orders</p>
+      <p className="text-xs text-zinc-400 mt-1 mb-3">Create a free account with your email — no password, just a code — and see your orders on any device.</p>
+      <EmailCodeSignIn
+        initialEmail={initialEmail}
+        onDone={async () => {
+          const rows = await claimAndFetch(c.orders.map(o => ({ id: o.id, token: o.token })));
+          c.mergeOrders(rowsToStubs(rows));
+          setDone(true);
+        }}
+      />
+    </div>
+  );
+}
+
 function SuccessView({ c }: { c: Commerce }) {
   const order = c.orders.find(o => o.id === c.activeOrderId);
   // Offer the Telegram connect only to website buyers (in-Telegram orders are
@@ -709,7 +835,7 @@ function SuccessView({ c }: { c: Commerce }) {
   return (
     <motion.div key="success" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
       <PanelHeader title="Order received" onClose={() => c.setView('closed')} />
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4">
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4 overflow-y-auto py-6">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }}>
           <CheckCircle2 size={72} className="text-green-400" />
         </motion.div>
@@ -723,6 +849,7 @@ function SuccessView({ c }: { c: Commerce }) {
             <div className="flex justify-between text-sm mt-1"><span className="text-zinc-400">Status</span><span className="font-semibold text-orange-400">Payment approval</span></div>
           </div>
         )}
+        {!c.customer && <AccountNudge c={c} />}
         {order && bot && <TelegramConnect bot={bot} token={order.token} />}
       </div>
       <div className="border-t border-white/10 px-6 pt-6 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] space-y-3 shrink-0">
@@ -757,22 +884,47 @@ function AccountView({ c }: { c: Commerce }) {
     supabase.rpc('get_telegram_orders', { p_init: init }).then(({ data }) => {
       const rows = (data as any[] | null) ?? [];
       if (!rows.length) return;
-      c.mergeOrders(rows.map(r => ({
-        id: r.id,
-        humanId: r.human_id,
-        token: r.token,
-        total: Number(r.total),
-        placedAt: new Date(r.placed_at).getTime(),
-        address: r.address ?? '',
-        items: [],
-      })));
+      c.mergeOrders(rowsToStubs(rows));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Signed-in customers: claim this device's guest orders + everything placed
+  // with the verified email, then merge the account's history in.
+  useEffect(() => {
+    if (!c.customer) return;
+    claimAndFetch(c.orders.map(o => ({ id: o.id, token: o.token })))
+      .then(rows => { if (rows.length) c.mergeOrders(rowsToStubs(rows)); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.customer?.userId]);
+
   return (
     <motion.div key="account" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25 }} className="flex flex-col h-full">
       <PanelHeader title="My Orders" onClose={() => c.setView('closed')} />
+
+      {/* Account block — signed in: identity + sign out; signed out: code sign-in. */}
+      <div className="px-6 pt-4 shrink-0">
+        {c.customer ? (
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+            <UserRound size={18} className="text-orange-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{c.customer.email}</p>
+              <p className="text-[11px] text-zinc-400">Orders sync to this account on any device</p>
+            </div>
+            <button onClick={() => customerSignOut()} aria-label="Sign out"
+              className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white transition-colors">
+              <LogOut size={14} /> Sign out
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-sm font-semibold flex items-center gap-2"><UserRound size={16} className="text-orange-400" /> Sign in</p>
+            <p className="text-xs text-zinc-400 mt-1 mb-3">Use your email code to see every order you've placed — on any device.</p>
+            <EmailCodeSignIn />
+          </div>
+        )}
+      </div>
+
       {c.orders.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4 text-zinc-400">
           <ClipboardList size={48} className="text-zinc-600" />

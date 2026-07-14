@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, ShoppingBag, Wallet, Shirt, Boxes, Users, Ticket,
   Settings as SettingsIcon, BarChart3, LogOut, Bell, Search, Menu, X, Loader2,
-  Image as ImageIcon, MessageCircle, Star,
+  Image as ImageIcon, MessageCircle, Star, Factory,
 } from 'lucide-react';
 
 // Sidebar navigation config. Paths are ABSOLUTE on purpose: relative links inside
@@ -16,6 +16,7 @@ export const NAV: NavItem[] = [
   { to: '/admin/payments', label: 'Payments', icon: Wallet },
   { to: '/admin/products', label: 'Catalog', icon: Shirt },
   { to: '/admin/inventory', label: 'Inventory', icon: Boxes },
+  { to: '/admin/production', label: 'Production', icon: Factory },
   { to: '/admin/customers', label: 'Customers', icon: Users },
   { to: '/admin/messages', label: 'Messages', icon: MessageCircle },
   { to: '/admin/reviews', label: 'Reviews', icon: Star },
